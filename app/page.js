@@ -150,6 +150,7 @@ export default function Home() {
               marketData={marketData}
               analysis={analysis}
               narrative={narrative}
+              polygonKey={polygonKey}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               hasClaude={hasClaude}
