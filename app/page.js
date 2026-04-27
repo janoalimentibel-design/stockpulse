@@ -90,7 +90,7 @@ export default function Home() {
   return (
     <div className="app-shell min-h-screen">
       <Navbar />
-      <main className="max-w-[900px] mx-auto px-5 pb-20 pt-6">
+      <main className="max-w-[1280px] mx-auto px-5 pb-20 pt-6">
 
         {/* Hero */}
         <div className="mb-8">
