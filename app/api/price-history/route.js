@@ -10,16 +10,16 @@ export async function POST(request) {
     const t = ticker.toUpperCase().trim()
     const now = new Date()
 
-    // Para 5A y MAX — Polygon free no tiene histórico largo, devolvemos needsPro
+    // 5A y MAX no disponibles en free tier
     if (range === '5A' || range === 'MAX') {
       return Response.json({ needsPro: true })
     }
 
     const config = {
-      '1D': { multiplier: 1,  timespan: 'day',  days: 5,   limit: 5   }, // fallback a 5 días diarios
-      '1M': { multiplier: 1,  timespan: 'day',  days: 30,  limit: 30  },
-      '6M': { multiplier: 1,  timespan: 'day',  days: 180, limit: 180 },
-      '1A': { multiplier: 1,  timespan: 'week', days: 365, limit: 52  },
+      '1D': { multiplier: 1, timespan: 'day',  days: 5,   limit: 5   },
+      '1M': { multiplier: 1, timespan: 'day',  days: 30,  limit: 30  },
+      '6M': { multiplier: 1, timespan: 'day',  days: 180, limit: 180 },
+      '1A': { multiplier: 1, timespan: 'week', days: 365, limit: 365 },
     }
 
     const cfg = config[range] || config['1M']

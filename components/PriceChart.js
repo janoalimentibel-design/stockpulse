@@ -20,6 +20,8 @@ export default function PriceChart({ ticker }) {
     setError('')
     setHover(null)
     setNeedsPro(false)
+    setPoints([])   // limpiar puntos anteriores al cambiar rango
+    setChange(null)
     fetch('/api/price-history', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
