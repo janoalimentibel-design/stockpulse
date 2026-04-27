@@ -11,41 +11,28 @@ function SigBadge({ dir }) {
   const labels = { bull: 'Alcista', bear: 'Bajista', neut: 'Neutral' }
   const c = sentimentColors[dir] || sentimentColors.neut
   return (
-    <span className="text-[11px] px-2.5 py-0.5 rounded-full"
-      style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
+    <span style={{
+      fontSize: 10, padding: '2px 10px', borderRadius: 999,
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+      whiteSpace: 'nowrap',
+    }}>
       {labels[dir] || 'Neutral'}
     </span>
   )
 }
 
-function IndicatorRow({ ind }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between py-2.5 gap-3"
-        style={{ borderBottom: '1px solid var(--border)' }}>
-        <span className="text-sm" style={{ color: 'var(--text2)', flex: 1 }}>{ind.name}</span>
-        <span className="text-xs" style={{ color: 'var(--text)', fontFamily: 'DM Mono, monospace' }}>{ind.displayVal}</span>
-        <SigBadge dir={ind.dir} />
-      </div>
-      {ind.note && (
-        <p className="text-xs py-1.5 pb-2.5" style={{ color: 'var(--text3)' }}>{ind.note}</p>
-      )}
-    </div>
-  )
-}
-
 function ScoreRing({ score, sentiment }) {
-  const radius = 36
+  const radius = 28
   const circ   = 2 * Math.PI * radius
   const offset = circ * (1 - score / 100)
   const color  = sentiment === 'bull' ? 'var(--green)' : sentiment === 'bear' ? 'var(--red)' : 'var(--amber)'
   return (
-    <svg width="88" height="88" viewBox="0 0 88 88">
-      <circle cx="44" cy="44" r={radius} fill="none" stroke="var(--bg4)" strokeWidth="5" />
-      <circle cx="44" cy="44" r={radius} fill="none" stroke={color} strokeWidth="5"
+    <svg width="68" height="68" viewBox="0 0 68 68" style={{ flexShrink: 0 }}>
+      <circle cx="34" cy="34" r={radius} fill="none" stroke="var(--bg4)" strokeWidth="4" />
+      <circle cx="34" cy="34" r={radius} fill="none" stroke={color} strokeWidth="4"
         strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-        transform="rotate(-90 44 44)" style={{ transition: 'stroke-dashoffset 1s ease' }} />
-      <text x="44" y="48" textAnchor="middle" fontSize="16" fontWeight="600"
+        transform="rotate(-90 34 34)" style={{ transition: 'stroke-dashoffset 1s ease' }} />
+      <text x="34" y="38" textAnchor="middle" fontSize="13" fontWeight="600"
         fill={color} fontFamily="DM Mono, monospace">{score}%</text>
     </svg>
   )
@@ -58,13 +45,38 @@ function consensusColor(c) {
   return 'var(--amber)'
 }
 
-const TABS = [
-  { id: 'resultado',   label: 'Veredicto'    },
-  { id: 'tecnico',     label: 'Técnico'      },
-  { id: 'fundamental', label: 'Fundamental'  },
-  { id: 'narrativa',   label: 'IA Narrativa' },
-  { id: 'resumen',     label: 'Resumen'      },
-  { id: 'noticias',    label: 'Noticias'     },
+function SectionLabel({ children }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
+      letterSpacing: '0.08em', color: 'var(--text3)',
+      marginBottom: 8, marginTop: 16,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function IndicatorRow({ ind }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '7px 0', borderBottom: '1px solid var(--border)', gap: 8,
+    }}>
+      <span style={{ fontSize: 12, color: 'var(--text2)', flex: 1 }}>{ind.name}</span>
+      <span style={{ fontSize: 11, color: 'var(--text)', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap' }}>
+        {ind.displayVal}
+      </span>
+      <SigBadge dir={ind.dir} />
+    </div>
+  )
+}
+
+const MOBILE_TABS = [
+  { id: 'veredicto', label: 'Veredicto' },
+  { id: 'tecnico',   label: 'Técnico'   },
+  { id: 'narrativa', label: 'IA'        },
+  { id: 'noticias',  label: 'Noticias'  },
 ]
 
 export default function ResultCard({
@@ -72,30 +84,94 @@ export default function ResultCard({
   narrative, activeTab, setActiveTab, hasClaude,
 }) {
   const { score, sentiment, trend, signal, bull, bear, neutral, total, confidence, indicators } = analysis
-  const colors    = sentimentColors[sentiment] || sentimentColors.neut
-  const techInds  = indicators.filter(i => i.isTech)
-  const fundInds  = indicators.filter(i => !i.isTech)
+  const colors   = sentimentColors[sentiment] || sentimentColors.neut
+  const techInds = indicators.filter(i => i.isTech)
+  const fundInds = indicators.filter(i => !i.isTech)
+
+  const NarrativaContent = () => (
+    narrative && !narrative._error ? (
+      <div>
+        <div style={{
+          background: 'rgba(108,127,255,0.07)', border: '1px solid rgba(108,127,255,0.22)',
+          borderRadius: 10, padding: '12px 14px', marginBottom: 12,
+        }}>
+          {narrative.analysts_consensus && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Consenso analistas</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: consensusColor(narrative.analysts_consensus) }}>
+                {narrative.analysts_consensus}
+              </span>
+            </div>
+          )}
+          {narrative.technical_summary && (
+            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65, marginBottom: 8 }}>
+              <span style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Técnico · </span>
+              {narrative.technical_summary}
+            </p>
+          )}
+          {narrative.fundamental_summary && (
+            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65, marginBottom: 8 }}>
+              <span style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Fundamental · </span>
+              {narrative.fundamental_summary}
+            </p>
+          )}
+          {narrative.analyst_summary && (
+            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65 }}>
+              <span style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Para el inversor · </span>
+              {narrative.analyst_summary}
+            </p>
+          )}
+        </div>
+        {(narrative.key_opportunity || narrative.key_risk) && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            {narrative.key_opportunity && (
+              <div style={{ background: 'var(--green-bg)', border: '1px solid var(--green-border)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Oportunidad</div>
+                <p style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{narrative.key_opportunity}</p>
+              </div>
+            )}
+            {narrative.key_risk && (
+              <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Riesgo</div>
+                <p style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.5 }}>{narrative.key_risk}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    ) : narrative?._error ? (
+      <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
+        <p style={{ fontSize: 12, color: 'var(--red)' }}>Error: {narrative._error}</p>
+      </div>
+    ) : (
+      <div style={{ background: 'var(--bg3)', borderRadius: 10, padding: '12px 14px', marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>
+        Generando análisis con IA...
+      </div>
+    )
+  )
 
   return (
     <div>
-      {/* Header: ticker + precio */}
-      <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
+      {/* Header full width */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <div className="flex items-baseline gap-3">
-            <h2 className="text-2xl font-bold" style={{ fontFamily: 'Syne' }}>{ticker}</h2>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <h2 style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Syne', margin: 0 }}>{ticker}</h2>
             {companyName && companyName !== ticker && (
-              <span className="text-sm" style={{ color: 'var(--text3)' }}>{companyName}</span>
+              <span style={{ fontSize: 13, color: 'var(--text3)' }}>{companyName}</span>
             )}
           </div>
           {marketData?.sector && (
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>{marketData.sector}</p>
+            <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {marketData.sector}
+            </p>
           )}
         </div>
         {marketData?.price && (
-          <div className="text-right">
-            <div className="text-2xl font-bold" style={{ fontFamily: 'DM Mono' }}>${marketData.price}</div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'DM Mono' }}>${marketData.price}</div>
             {marketData.priceChangeToday != null && (
-              <div className="text-sm" style={{ color: marketData.priceChangeToday >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              <div style={{ fontSize: 13, color: marketData.priceChangeToday >= 0 ? 'var(--green)' : 'var(--red)' }}>
                 {marketData.priceChangeToday >= 0 ? '+' : ''}{marketData.priceChangeToday}% hoy
               </div>
             )}
@@ -103,213 +179,178 @@ export default function ResultCard({
         )}
       </div>
 
-      {/* Gráfico — siempre visible, no depende de ninguna prop de key */}
-      <PriceChart ticker={ticker} />
+      {/* DESKTOP: 2 columnas */}
+      <div className="result-desktop-grid">
+        {/* Columna izquierda: gráfico + veredicto + métricas */}
+        <div className="result-col-left">
+          <PriceChart ticker={ticker} />
 
-      {/* Tabs */}
-      <div className="flex gap-1.5 mb-4 flex-wrap">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className="px-4 py-1.5 rounded-full text-xs font-medium transition-all"
-            style={{
-              background: activeTab === t.id ? 'var(--bg3)'  : 'transparent',
-              color:      activeTab === t.id ? 'var(--text)' : 'var(--text2)',
-              border:     `1px solid ${activeTab === t.id ? 'var(--border2)' : 'transparent'}`,
-            }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'resultado' && (
-        <div>
-          <div className="rounded-xl p-5 mb-4"
-            style={{ background: colors.bg, border: `1px solid ${colors.border}` }}>
-            <div className="flex items-center gap-5">
+          <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '14px 16px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <ScoreRing score={score} sentiment={sentiment} />
-              <div className="flex-1">
-                <div className="text-xl font-bold mb-1" style={{ color: colors.text, fontFamily: 'Syne' }}>{trend}</div>
-                <div className="text-xs mb-3" style={{ color: 'var(--text2)' }}>
-                  {bull} alcistas · {bear} bajistas · {neutral} neutrales sobre {total} señales
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: colors.text, fontFamily: 'Syne', marginBottom: 3 }}>{trend}</div>
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>
+                  {bull} alcistas · {bear} bajistas · {neutral} neutrales
                 </div>
-                <span className="text-xs px-3 py-1 rounded-full font-medium"
-                  style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
+                <span style={{ fontSize: 11, padding: '3px 12px', borderRadius: 999, fontWeight: 500, background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
                   {signal}
                 </span>
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2 mb-4">
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
             {[
-              { label: 'Score alcista', val: `${score}%`, sub: `${total} indicadores`, color: colors.text },
-              { label: 'Señales bull',  val: bull, sub: `${Math.round(bull/total*100)}%`, color: 'var(--green)' },
-              { label: 'Señales bear',  val: bear, sub: `${Math.round(bear/total*100)}%`, color: 'var(--red)'   },
-              { label: 'Confianza',     val: confidence, sub: `${total} métricas`, color: 'var(--text)' },
+              { label: 'Score alcista', val: `${score}%`, color: colors.text },
+              { label: 'Señales bull',  val: bull,        color: 'var(--green)' },
+              { label: 'Señales bear',  val: bear,        color: 'var(--red)'   },
+              { label: 'Confianza',     val: confidence,  color: 'var(--text)'  },
             ].map((m, i) => (
-              <div key={i} className="rounded-xl p-3" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-                <div className="text-[10px] mb-1.5" style={{ color: 'var(--text3)' }}>{m.label}</div>
-                <div className="text-xl font-bold" style={{ color: m.color, fontFamily: 'DM Mono' }}>{m.val}</div>
-                <div className="text-[10px] mt-1" style={{ color: 'var(--text3)' }}>{m.sub}</div>
+              <div key={i} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{m.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: m.color, fontFamily: 'DM Mono' }}>{m.val}</div>
               </div>
             ))}
           </div>
-          <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-            <p className="text-[11px] font-medium mb-3" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Distribución de señales</p>
-            {[
-              { label: `Alcistas (${bull})`,   pct: Math.round(bull/total*100),    color: 'var(--green)' },
-              { label: `Bajistas (${bear})`,   pct: Math.round(bear/total*100),    color: 'var(--red)'   },
-              { label: `Neutras (${neutral})`, pct: Math.round(neutral/total*100), color: 'var(--amber)' },
-            ].map((b, i) => (
-              <div key={i} className="mb-3">
-                <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--text3)' }}>
-                  <span>{b.label}</span><span>{b.pct}%</span>
-                </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg4)' }}>
-                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${b.pct}%`, background: b.color }} />
-                </div>
+
+          {marketData && (
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text3)', marginBottom: 8 }}>Métricas clave</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                {[
+                  { label: 'RSI',       val: marketData.rsi     ? Number(marketData.rsi).toFixed(0) : 'N/D' },
+                  { label: 'MA50',      val: marketData.ma50    ? '$' + marketData.ma50              : 'N/D' },
+                  { label: 'MA200',     val: marketData.ma200   ? '$' + marketData.ma200             : 'N/D' },
+                  { label: 'Máx 52W',  val: marketData.high52  ? '$' + marketData.high52            : 'N/D' },
+                  { label: 'Mín 52W',  val: marketData.low52   ? '$' + marketData.low52             : 'N/D' },
+                  { label: 'Cambio 1M', val: marketData.change1m != null ? (marketData.change1m > 0 ? '+' : '') + marketData.change1m + '%' : 'N/D' },
+                ].map((m, i) => (
+                  <div key={i} style={{ background: 'var(--bg3)', borderRadius: 6, padding: '7px 8px' }}>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 3 }}>{m.label}</div>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text)', fontFamily: 'DM Mono' }}>{m.val}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
 
-      {activeTab === 'tecnico' && (
-        <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-          <p className="text-[11px] font-medium mb-3" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Indicadores técnicos</p>
-          {techInds.length ? techInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />) : <p className="text-sm" style={{ color: 'var(--text3)' }}>Sin datos técnicos disponibles.</p>}
-        </div>
-      )}
+        {/* Columna derecha: narrativa IA + indicadores + noticias */}
+        <div className="result-col-right">
+          <SectionLabel>★ Narrativa IA</SectionLabel>
+          <NarrativaContent />
 
-      {activeTab === 'fundamental' && (
-        <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-          <p className="text-[11px] font-medium mb-3" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Indicadores fundamentales</p>
-          {fundInds.length ? fundInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />) : (
+          {techInds.length > 0 && (
             <div>
-              <p className="text-sm mb-2" style={{ color: 'var(--text3)' }}>Los datos fundamentales no están disponibles en el plan gratuito de Polygon. Podés ingresarlos manualmente abajo.</p>
-              <p className="text-xs" style={{ color: 'var(--text3)' }}>Fuentes: Yahoo Finance, Macrotrends, o tu broker.</p>
+              <SectionLabel>Indicadores técnicos</SectionLabel>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
+                {techInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+              </div>
+            </div>
+          )}
+
+          {fundInds.length > 0 && (
+            <div>
+              <SectionLabel>Fundamentales</SectionLabel>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
+                {fundInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+              </div>
+            </div>
+          )}
+
+          {marketData?.news?.length > 0 && (
+            <div>
+              <SectionLabel>Noticias recientes</SectionLabel>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
+                {marketData.news.map((n, i) => (
+                  <div key={i} style={{ padding: '8px 0', borderBottom: i < marketData.news.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <a href={n.url} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: 'block' }}>
+                      {n.title}
+                    </a>
+                    <p style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+                      {n.publisher} · {n.published?.split('T')[0]}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {activeTab === 'narrativa' && (
-        <div className="space-y-3">
-          {!hasClaude && (
-            <div className="rounded-xl p-4" style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber-border)' }}>
-              <p className="text-sm font-medium mb-1" style={{ color: 'var(--amber)' }}>Claude API key no configurada</p>
-              <p className="text-xs" style={{ color: 'var(--text3)' }}>Configurala en ⚙ API Keys.</p>
-            </div>
-          )}
-          {narrative?._error && (
-            <div className="rounded-xl p-4" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
-              <p className="text-sm font-medium mb-1" style={{ color: 'var(--red)' }}>Error generando narrativa</p>
-              <p className="text-xs" style={{ color: 'var(--text3)' }}>{narrative._error}</p>
-            </div>
-          )}
-          {narrative && !narrative._error && (
-            <>
-              {narrative.analysts_consensus && (
-                <div className="rounded-xl p-4 flex items-center justify-between" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-                  <span className="text-xs" style={{ color: 'var(--text3)' }}>Consenso estimado (IA)</span>
-                  <span className="text-sm font-semibold" style={{ color: consensusColor(narrative.analysts_consensus) }}>{narrative.analysts_consensus}</span>
-                </div>
-              )}
-              {[
-                { title: 'Lectura técnica',        body: narrative.technical_summary   },
-                { title: 'Situación fundamental',  body: narrative.fundamental_summary },
-                { title: 'Sentimiento de mercado', body: narrative.market_sentiment    },
-                { title: 'Para el inversor',       body: narrative.analyst_summary     },
-              ].filter(s => s.body).map((s, i) => (
-                <div key={i} className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-                  <p className="text-[11px] font-medium mb-2" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.title}</p>
-                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text2)' }}>{s.body}</p>
-                </div>
-              ))}
-              {(narrative.key_opportunity || narrative.key_risk) && (
-                <div className="grid grid-cols-2 gap-3">
-                  {narrative.key_opportunity && (
-                    <div className="rounded-xl p-4" style={{ background: 'var(--green-bg)', border: '1px solid var(--green-border)' }}>
-                      <p className="text-[10px] font-medium mb-2" style={{ color: 'var(--green)', textTransform: 'uppercase' }}>Oportunidad</p>
-                      <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>{narrative.key_opportunity}</p>
-                    </div>
-                  )}
-                  {narrative.key_risk && (
-                    <div className="rounded-xl p-4" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
-                      <p className="text-[10px] font-medium mb-2" style={{ color: 'var(--red)', textTransform: 'uppercase' }}>Riesgo</p>
-                      <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>{narrative.key_risk}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      {/* MOBILE: 1 columna con tabs */}
+      <div className="result-mobile">
+        <PriceChart ticker={ticker} />
 
-      {activeTab === 'resumen' && (
-        <div className="space-y-3">
-          <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-            <p className="text-[11px] font-medium mb-3" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Métricas clave</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'RSI (14)',   val: marketData?.rsi      ? Number(marketData.rsi).toFixed(1) : 'N/D' },
-                { label: 'MA50',       val: marketData?.ma50      ? '$' + marketData.ma50             : 'N/D' },
-                { label: 'MA200',      val: marketData?.ma200     ? '$' + marketData.ma200            : 'N/D' },
-                { label: 'Máx 52W',   val: marketData?.high52    ? '$' + marketData.high52           : 'N/D' },
-                { label: 'Mín 52W',   val: marketData?.low52     ? '$' + marketData.low52            : 'N/D' },
-                { label: 'Cambio 1M', val: marketData?.change1m != null ? (marketData.change1m > 0 ? '+' : '') + marketData.change1m + '%' : 'N/D' },
-                { label: 'P/E',        val: marketData?.pe        ? marketData.pe          : 'N/D' },
-                { label: 'ROE',        val: marketData?.roe       ? marketData.roe + '%'   : 'N/D' },
-                { label: 'Vol. rel.',  val: marketData?.relVol    ? marketData.relVol + 'x': 'N/D' },
-              ].map((m, i) => (
-                <div key={i} className="rounded-lg p-3" style={{ background: 'var(--bg3)' }}>
-                  <div className="text-xs mb-1" style={{ color: 'var(--text3)' }}>{m.label}</div>
-                  <div className="text-sm font-medium" style={{ fontFamily: 'DM Mono', color: 'var(--text)' }}>{m.val}</div>
-                </div>
-              ))}
+        <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <ScoreRing score={score} sentiment={sentiment} />
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.text, fontFamily: 'Syne' }}>{trend}</div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', margin: '3px 0 6px' }}>{bull} alc · {bear} baj · {neutral} neut</div>
+              <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 999, background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>{signal}</span>
             </div>
           </div>
-          {narrative && !narrative._error && narrative.analysts_consensus && (
-            <div className="rounded-xl p-4 flex items-center justify-between" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-              <span className="text-xs" style={{ color: 'var(--text3)' }}>Consenso estimado (IA)</span>
-              <span className="text-sm font-semibold" style={{ color: consensusColor(narrative.analysts_consensus) }}>{narrative.analysts_consensus}</span>
-            </div>
-          )}
-          {narrative && !narrative._error && (narrative.key_opportunity || narrative.key_risk) && (
-            <div className="grid grid-cols-2 gap-3">
-              {narrative.key_opportunity && (
-                <div className="rounded-xl p-4" style={{ background: 'var(--green-bg)', border: '1px solid var(--green-border)' }}>
-                  <p className="text-[10px] font-medium mb-2" style={{ color: 'var(--green)', textTransform: 'uppercase' }}>Oportunidad</p>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>{narrative.key_opportunity}</p>
-                </div>
-              )}
-              {narrative.key_risk && (
-                <div className="rounded-xl p-4" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
-                  <p className="text-[10px] font-medium mb-2" style={{ color: 'var(--red)', textTransform: 'uppercase' }}>Riesgo</p>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text2)' }}>{narrative.key_risk}</p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
-      )}
 
-      {activeTab === 'noticias' && (
-        <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-          <p className="text-[11px] font-medium mb-3" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Noticias recientes</p>
-          {marketData?.news?.length > 0
-            ? marketData.news.map((n, i) => (
-                <div key={i} className="py-3" style={{ borderBottom: i < marketData.news.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-sm hover:underline" style={{ color: 'var(--text2)' }}>{n.title}</a>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text3)' }}>{n.publisher} · {n.published?.split('T')[0]}</p>
-                </div>
-              ))
-            : <p className="text-sm" style={{ color: 'var(--text3)' }}>No hay noticias disponibles.</p>
-          }
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+          {MOBILE_TABS.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)}
+              style={{
+                padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                background: activeTab === t.id ? 'var(--bg3)' : 'transparent',
+                color:      activeTab === t.id ? 'var(--text)' : 'var(--text2)',
+                border:     `1px solid ${activeTab === t.id ? 'var(--border2)' : 'transparent'}`,
+              }}>
+              {t.label}
+            </button>
+          ))}
         </div>
-      )}
 
-      <p className="text-[11px] mt-4" style={{ color: 'var(--text3)' }}>
+        {activeTab === 'veredicto' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+              {[
+                { label: 'Score', val: `${score}%`, color: colors.text },
+                { label: 'Bull',  val: bull,        color: 'var(--green)' },
+                { label: 'Bear',  val: bear,        color: 'var(--red)'   },
+                { label: 'Conf.', val: confidence,  color: 'var(--text)'  },
+              ].map((m, i) => (
+                <div key={i} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{m.label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: m.color, fontFamily: 'DM Mono' }}>{m.val}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
+              {techInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+            </div>
+          </div>
+        )}
+        {activeTab === 'tecnico' && (
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
+            {[...techInds, ...fundInds].map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+          </div>
+        )}
+        {activeTab === 'narrativa' && <NarrativaContent />}
+        {activeTab === 'noticias' && (
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
+            {marketData?.news?.length > 0
+              ? marketData.news.map((n, i) => (
+                  <div key={i} style={{ padding: '8px 0', borderBottom: i < marketData.news.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <a href={n.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: 'block' }}>{n.title}</a>
+                    <p style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>{n.publisher} · {n.published?.split('T')[0]}</p>
+                  </div>
+                ))
+              : <p style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Sin noticias.</p>
+            }
+          </div>
+        )}
+      </div>
+
+      <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 16 }}>
         ⚠️ Análisis informativo. No constituye asesoramiento financiero. Datos con delay de ~15 min.
       </p>
     </div>

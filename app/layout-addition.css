@@ -1,0 +1,28 @@
+/* Agregar al final de globals.css */
+
+/* Layout 2 columnas — ResultCard */
+.result-desktop-grid {
+  display: none;
+}
+.result-mobile {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  .result-desktop-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .result-col-left {
+    position: sticky;
+    top: 16px;
+  }
+  .result-col-right {
+    /* columna derecha scrollea normalmente */
+  }
+  .result-mobile {
+    display: none;
+  }
+}
