@@ -69,7 +69,7 @@ const TABS = [
 
 export default function ResultCard({
   ticker, companyName, marketData, analysis,
-  narrative, activeTab, setActiveTab, hasClaude, polygonKey,
+  narrative, activeTab, setActiveTab, hasClaude,
 }) {
   const { score, sentiment, trend, signal, bull, bear, neutral, total, confidence, indicators } = analysis
   const colors    = sentimentColors[sentiment] || sentimentColors.neut
@@ -78,6 +78,7 @@ export default function ResultCard({
 
   return (
     <div>
+      {/* Header: ticker + precio */}
       <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-baseline gap-3">
@@ -102,10 +103,10 @@ export default function ResultCard({
         )}
       </div>
 
-      {polygonKey && (
-        <PriceChart ticker={ticker} polygonKey={polygonKey} />
-      )}
+      {/* Gráfico — siempre visible, no depende de ninguna prop de key */}
+      <PriceChart ticker={ticker} />
 
+      {/* Tabs */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}

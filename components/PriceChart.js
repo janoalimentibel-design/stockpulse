@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 
 const RANGES = ['1D', '1M', '6M', '1A', '5A', 'MAX']
 
-export default function PriceChart({ ticker, polygonKey }) {
+export default function PriceChart({ ticker }) {
   const canvasRef  = useRef(null)
   const wrapperRef = useRef(null)
   const [range, setRange]     = useState('1M')
@@ -12,26 +12,29 @@ export default function PriceChart({ ticker, polygonKey }) {
   const [error, setError]     = useState('')
   const [change, setChange]   = useState(null)
   const [hover, setHover]     = useState(null)
+  const [needsPro, setNeedsPro] = useState(false)
 
   useEffect(() => {
-    if (!ticker || !polygonKey) return
+    if (!ticker) return
     setLoading(true)
     setError('')
     setHover(null)
+    setNeedsPro(false)
     fetch('/api/price-history', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker, range, polygonKey }),
+      body: JSON.stringify({ ticker, range }),
     })
       .then(r => r.json())
       .then(d => {
+        if (d.needsPro) { setNeedsPro(true); setPoints([]); return }
         if (d.error) { setError(d.error); setPoints([]); return }
         setPoints(d.points || [])
         setChange(d.change)
       })
       .catch(() => setError('Error cargando historial.'))
       .finally(() => setLoading(false))
-  }, [ticker, range, polygonKey])
+  }, [ticker, range])
 
   function formatLabel(ts) {
     const d = new Date(ts)
@@ -146,7 +149,7 @@ export default function PriceChart({ ticker, polygonKey }) {
 
   const handleMouseMove = useCallback((e) => {
     if (!wrapperRef.current || points.length < 2) return
-    const rect  = wrapperRef.current.getBoundingClientRect()
+    const rect   = wrapperRef.current.getBoundingClientRect()
     const mouseX = e.clientX - rect.left
     const idx    = Math.round((mouseX / rect.width) * (points.length - 1))
     const clamped = Math.max(0, Math.min(points.length - 1, idx))
@@ -159,9 +162,7 @@ export default function PriceChart({ ticker, polygonKey }) {
 
   const isUp   = change !== null ? change >= 0 : true
   const active = hover || null
-
-  // Métricas a mostrar — siempre visibles, cambian con hover
-  const lastPoint = points.length > 0 ? points[points.length - 1] : null
+  const lastPoint   = points.length > 0 ? points[points.length - 1] : null
   const displayPoint = active ? active : lastPoint ? { price: lastPoint.c, o: lastPoint.o, h: lastPoint.h, l: lastPoint.l, v: lastPoint.v, pct: change } : null
 
   return (
@@ -190,6 +191,11 @@ export default function PriceChart({ ticker, polygonKey }) {
               )}
               {loading && <span className="text-xs" style={{ color: 'var(--text3)' }}>Cargando...</span>}
               {error && <span className="text-xs" style={{ color: 'var(--red)' }}>{error}</span>}
+              {needsPro && (
+                <span className="text-xs" style={{ color: 'var(--text3)' }}>
+                  Historial extendido próximamente
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -203,8 +209,12 @@ export default function PriceChart({ ticker, polygonKey }) {
                 border: '0.5px solid',
                 borderColor: range === r ? 'var(--accent)' : 'transparent',
                 background:  range === r ? 'var(--accent-bg)' : 'transparent',
-                color:       range === r ? 'var(--accent)'    : 'var(--text3)',
-                cursor: 'pointer', transition: 'all 0.15s',
+                color: (r === '5A' || r === 'MAX')
+                  ? (range === r ? 'var(--accent)' : 'var(--text3)')
+                  : (range === r ? 'var(--accent)' : 'var(--text3)'),
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                opacity: (r === '5A' || r === 'MAX') ? 0.5 : 1,
               }}>
               {r}
             </button>
@@ -222,7 +232,13 @@ export default function PriceChart({ ticker, polygonKey }) {
             <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
           </div>
         )}
-        {!loading && points.length === 0 && !error && (
+        {!loading && needsPro && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--text3)' }}>Historial extendido no disponible aún</span>
+            <span style={{ fontSize: 11, color: 'var(--text3)', opacity: 0.6 }}>Probá con 1A o menos</span>
+          </div>
+        )}
+        {!loading && !needsPro && points.length === 0 && !error && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontSize: 12, color: 'var(--text3)' }}>Sin datos disponibles</span>
           </div>
@@ -230,7 +246,7 @@ export default function PriceChart({ ticker, polygonKey }) {
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       </div>
 
-      {/* Métricas — SIEMPRE visibles, se actualizan con hover */}
+      {/* Métricas */}
       {displayPoint && (
         <div className="grid grid-cols-4" style={{ borderTop: '0.5px solid var(--border)' }}>
           {[

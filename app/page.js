@@ -1,16 +1,12 @@
 'use client'
 import { useState, useRef } from 'react'
-import { useKeys } from '../lib/useKeys'
 import { computeAnalysis } from '../lib/analyze'
 import Navbar from '../components/Navbar'
-import KeysBanner from '../components/KeysBanner'
 import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
 import ManualForm from '../components/ManualForm'
 
 export default function Home() {
-  const { polygonKey, claudeKey, hasPolygon, hasClaude } = useKeys()
-
   const [ticker,     setTicker]     = useState('')
   const [loading,    setLoading]    = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
@@ -20,21 +16,19 @@ export default function Home() {
   const [analysis,   setAnalysis]   = useState(null)
   const [manualData, setManualData] = useState({})
   const [activeTab,  setActiveTab]  = useState('resultado')
-
   const resultRef = useRef(null)
 
   const msgs = [
     'Buscando datos de mercado...',
     'Obteniendo noticias recientes...',
     'Consultando precio y métricas...',
-    'Generando análisis con Claude...',
+    'Generando análisis con IA...',
     'Casi listo...',
   ]
 
   async function runAnalysis(searchTicker) {
     const t = (searchTicker || ticker).toUpperCase().trim()
     if (!t) return
-    if (!hasPolygon) { setError('Configurá tu Polygon API key primero.'); return }
 
     setLoading(true)
     setError('')
@@ -51,42 +45,35 @@ export default function Home() {
     }, 2000)
 
     try {
-      // PASO 1: Polygon — nombre, sector y noticias
       const mdRes = await fetch('/api/market-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: t, polygonKey }),
+        body: JSON.stringify({ ticker: t }),
       })
       const md = await mdRes.json()
-      if (!mdRes.ok || md.error) throw new Error(md.error || 'Error obteniendo datos de mercado.')
+      if (!mdRes.ok || md.error) throw new Error(md.error || 'No pudimos obtener datos para este ticker. Verificá que sea un símbolo válido: AAPL, NVDA, MELI.')
       setMarketData(md)
 
-      // Análisis preliminar con lo que hay
       const prelimResult = computeAnalysis({ ...md, ...manualData })
       setAnalysis(prelimResult)
 
-      // PASO 2: Claude — datos numéricos reales + narrativa (UNA sola llamada)
-      if (hasClaude) {
-        setLoadingMsg('Generando análisis completo con Claude...')
-        const narRes = await fetch('/api/narrative', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: md, claudeKey }),
-        })
-        const nar = await narRes.json()
+      setLoadingMsg('Generando análisis completo con IA...')
+      const narRes = await fetch('/api/narrative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: md }),
+      })
+      const nar = await narRes.json()
 
-        if (!nar.error) {
-          setNarrative(nar)
-          // RECALCULAR con datos reales de Claude (precio, RSI, MA50, cambio%, etc.)
-          if (nar.extraData) {
-            const enrichedData = { ...md, ...nar.extraData }
-            setMarketData(enrichedData)
-            const enrichedResult = computeAnalysis({ ...enrichedData, ...manualData })
-            setAnalysis(enrichedResult)
-          }
-        } else {
-          setNarrative({ _error: nar.error })
+      if (!nar.error) {
+        setNarrative(nar)
+        if (nar.extraData) {
+          const enrichedData = { ...md, ...nar.extraData }
+          setMarketData(enrichedData)
+          setAnalysis(computeAnalysis({ ...enrichedData, ...manualData }))
         }
+      } else {
+        setNarrative({ _error: nar.error })
       }
 
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
@@ -104,26 +91,33 @@ export default function Home() {
     <div className="app-shell min-h-screen">
       <Navbar />
       <main className="max-w-[900px] mx-auto px-5 pb-20 pt-6">
-        <KeysBanner />
 
+        {/* Hero */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>
             Análisis de acciones
           </h1>
           <p className="text-sm" style={{ color: 'var(--text2)' }}>
-            Técnico · Fundamental · Narrativa IA · en español
+            Técnico · Fundamental · Narrativa IA · en español — gratis, sin registro
           </p>
         </div>
 
+        {/* Buscador */}
         <SearchBox
           ticker={ticker}
           setTicker={setTicker}
           onSearch={runAnalysis}
           loading={loading}
-          hasPolygon={hasPolygon}
-          polygonKey={polygonKey}
         />
 
+        {/* Disclaimer */}
+        {!hasResults && !loading && (
+          <p className="text-[11px] mt-3" style={{ color: 'var(--text3)' }}>
+            ⚠️ Herramienta informativa — no constituye asesoramiento financiero ni recomendación de inversión.
+          </p>
+        )}
+
+        {/* Loading */}
         {loading && (
           <div className="mt-6 rounded-xl p-5" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
             <div className="flex items-center gap-3 mb-3">
@@ -136,12 +130,14 @@ export default function Home() {
           </div>
         )}
 
+        {/* Error */}
         {error && (
           <div className="mt-4 p-4 rounded-xl text-sm" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', color: 'var(--red)' }}>
             {error}
           </div>
         )}
 
+        {/* Resultado */}
         {hasResults && (
           <div ref={resultRef} className="mt-6 animate-fade-up">
             <ResultCard
@@ -150,10 +146,9 @@ export default function Home() {
               marketData={marketData}
               analysis={analysis}
               narrative={narrative}
-              polygonKey={polygonKey}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
-              hasClaude={hasClaude}
+              hasClaude={true}
             />
             <div className="mt-6">
               <ManualForm
@@ -170,11 +165,12 @@ export default function Home() {
           </div>
         )}
 
+        {/* Estado vacío */}
         {!hasResults && !loading && !error && (
-          <div className="text-center py-20" style={{ color: 'var(--text3)' }}>
+          <div className="text-center py-16" style={{ color: 'var(--text3)' }}>
             <p className="text-5xl mb-5">📈</p>
-            <p className="text-sm">Escribí un ticker o nombre de empresa para ver el análisis completo.</p>
-            <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Ej: AAPL · NVDA · MELI · CAR · GOOGL</p>
+            <p className="text-sm mb-1">Escribí un ticker o nombre de empresa para ver el análisis completo.</p>
+            <p className="text-xs" style={{ color: 'var(--text3)' }}>Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN</p>
           </div>
         )}
       </main>

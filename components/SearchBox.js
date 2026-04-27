@@ -1,20 +1,18 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 
-export default function SearchBox({ ticker, setTicker, onSearch, loading, hasPolygon, polygonKey }) {
-  const [query, setQuery] = useState('')
-  const [suggestions, setSuggestions] = useState([])
+export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
+  const [query, setQuery]               = useState('')
+  const [suggestions, setSuggestions]   = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [searching, setSearching] = useState(false)
+  const [searching, setSearching]       = useState(false)
   const [selectedTicker, setSelectedTicker] = useState(null)
   const debounceRef = useRef(null)
-  const wrapperRef = useRef(null)
+  const wrapperRef  = useRef(null)
 
   useEffect(() => {
     function handleClick(e) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
-        setShowSuggestions(false)
-      }
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setShowSuggestions(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -24,21 +22,20 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading, hasPol
     if (!query || query.length < 2) { setSuggestions([]); setShowSuggestions(false); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
-      if (!polygonKey) return
       setSearching(true)
       try {
         const res = await fetch('/api/search-ticker', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, polygonKey })
+          body: JSON.stringify({ query }),
         })
         const data = await res.json()
         setSuggestions(data.results || [])
-        setShowSuggestions(true)
+        setShowSuggestions((data.results || []).length > 0)
       } catch { setSuggestions([]) }
       finally { setSearching(false) }
     }, 350)
-  }, [query, polygonKey])
+  }, [query])
 
   function selectSuggestion(item) {
     setQuery(item.name)
@@ -76,7 +73,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading, hasPol
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-            placeholder="Escribi el nombre o ticker - Apple, Oracle, NVDA..."
+            placeholder="Escribí el nombre o ticker — Apple, NVDA, Mercado Libre..."
             maxLength={60}
             disabled={loading}
             style={{
@@ -84,12 +81,8 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading, hasPol
               background: 'var(--bg2)',
               border: '1px solid var(--border2)',
               borderRadius: showSuggestions && suggestions.length > 0 ? '10px 10px 0 0' : '10px',
-              color: 'var(--text)',
-              fontSize: '15px',
-              padding: '12px 16px',
-              width: '100%',
-              outline: 'none',
-              boxSizing: 'border-box',
+              color: 'var(--text)', fontSize: '15px', padding: '12px 16px',
+              width: '100%', outline: 'none', boxSizing: 'border-box',
             }}
           />
           {searching && (
@@ -117,8 +110,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading, hasPol
             </div>
           )}
         </div>
-        <button onClick={handleSearch}
-          disabled={loading || !query.trim() || !hasPolygon}
+        <button onClick={handleSearch} disabled={loading || !query.trim()}
           className="px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ background: 'var(--accent)', color: '#fff', fontFamily: 'Syne, sans-serif', whiteSpace: 'nowrap' }}>
           {loading ? 'Analizando...' : 'Analizar'}
@@ -126,7 +118,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading, hasPol
       </div>
       {selectedTicker
         ? <p className="text-xs mt-2" style={{ color: 'var(--green)' }}>Ticker: <strong>{selectedTicker}</strong></p>
-        : <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Escribi el nombre de la empresa o el ticker. Ej: Apple, AAPL, Oracle, ORCL</p>
+        : <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Escribí el nombre o el ticker. Ej: Apple, AAPL, Nvidia, NVDA, Mercado Libre, MELI</p>
       }
     </div>
   )
