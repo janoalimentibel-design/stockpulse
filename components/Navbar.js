@@ -39,7 +39,6 @@ function GuiaModal({ onClose }) {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-2xl rounded-2xl pb-8"
         style={{ background: 'var(--bg)', border: '1px solid var(--border2)' }}>
-
         <div className="sticky top-0 flex items-center justify-between px-6 py-4 rounded-t-2xl z-10"
           style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
           <div>
@@ -52,7 +51,6 @@ function GuiaModal({ onClose }) {
             ✕ Cerrar
           </button>
         </div>
-
         <div className="px-6 pt-4 space-y-4">
           <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
             <p className="text-[11px] font-medium mb-2" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Indicadores técnicos</p>
@@ -77,7 +75,6 @@ function GuiaModal({ onClose }) {
                 signals={[{ bull: true, label: 'Fortaleza: precio en 60–100% del rango' }, { bull: false, label: 'Debilidad: precio en 0–40% del rango' }]} />
             </div>
           </div>
-
           <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
             <p className="text-[11px] font-medium mb-2" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Indicadores fundamentales</p>
             <GuideItem name="P/E ratio vs sector" tag="Fundamental" tagColor={FUND_TAG}
@@ -101,23 +98,22 @@ function GuiaModal({ onClose }) {
                 signals={[{ bull: true, label: 'Atractivo: yield > 3% sostenible' }, { bull: false, label: 'Alerta: yield > 8% puede ser insostenible' }]} />
             </div>
           </div>
-
           <div className="rounded-xl p-4" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
             <p className="text-[11px] font-medium mb-3" style={{ color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Combinaciones clave</p>
             {[
               { color: 'var(--green)', label: 'Señales alcistas', items: [
                 { bold: 'Golden Cross + RSI 50–65:', rest: ' tendencia alcista consolidada sin sobrecompra. Escenario ideal de entrada.' },
                 { bold: 'MACD cruza señal + volumen > 1.2x:', rest: ' impulso alcista con convicción del mercado.' },
-                { bold: 'P/E < sector + ROE > 15% + D/E < 0.5:', rest: ' empresa subvaluada, rentable y financieramente sólida.' },
+                { bold: 'P/E < sector + ROE > 15% + D/E < 0.5:', rest: ' empresa subvaluada, rentable y sólida.' },
               ]},
               { color: 'var(--red)', label: 'Señales bajistas', items: [
-                { bold: 'Death Cross + Precio < MA50/200 + volumen alto:', rest: ' tendencia bajista confirmada. Señal de salida o espera.' },
-                { bold: 'RSI > 70 + precio en máximo 52W:', rest: ' sobrecompra con posible agotamiento. Momento de cautela.' },
+                { bold: 'Death Cross + Precio < MA50/200 + volumen alto:', rest: ' tendencia bajista confirmada.' },
+                { bold: 'RSI > 70 + precio en máximo 52W:', rest: ' sobrecompra con posible agotamiento.' },
                 { bold: 'EPS negativo + D/E > 1.5 + márgenes cayendo:', rest: ' deterioro fundamental real.' },
               ]},
-              { color: 'var(--amber)', label: 'Señales contradictorias — qué hacer', items: [
+              { color: 'var(--amber)', label: 'Señales contradictorias', items: [
                 { bold: 'Técnico alcista + fundamentales débiles:', rest: ' posible rebote especulativo. Esperar confirmación.' },
-                { bold: 'Fundamentales sólidos + técnico bajista:', rest: ' empresa buena bajo presión. Oportunidad de acumulación gradual.' },
+                { bold: 'Fundamentales sólidos + técnico bajista:', rest: ' oportunidad de acumulación gradual.' },
               ]},
             ].map((group, gi) => (
               <div key={gi} className="rounded-lg p-3 mb-2 last:mb-0" style={{ background: 'var(--bg3)' }}>
@@ -147,7 +143,7 @@ export default function Navbar() {
   return (
     <>
       <nav className="sticky top-0 z-40 border-b"
-        style={{ background: 'rgba(10,10,12,0.85)', backdropFilter: 'blur(12px)', borderColor: 'var(--border)' }}>
+        style={{ background: 'rgba(11,13,18,0.90)', backdropFilter: 'blur(12px)', borderColor: 'var(--border)' }}>
         <div className="max-w-[900px] mx-auto px-5 h-14 flex items-center justify-between gap-6">
 
           <Link href="/" className="flex items-center gap-2 shrink-0">
@@ -169,23 +165,9 @@ export default function Navbar() {
 
             <button onClick={() => setGuiaOpen(true)}
               className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all"
-              style={{
-                background: 'transparent',
-                color: 'var(--text2)',
-                border: '1px solid transparent',
-              }}>
+              style={{ background: 'transparent', color: 'var(--text2)', border: '1px solid transparent' }}>
               Guía
             </button>
-
-            <Link href="/config"
-              className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all"
-              style={{
-                background: path === '/config' ? 'var(--bg3)' : 'transparent',
-                color: path === '/config' ? 'var(--text)' : 'var(--text2)',
-                border: `1px solid ${path === '/config' ? 'var(--border2)' : 'transparent'}`,
-              }}>
-              ⚙ API Keys
-            </Link>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
