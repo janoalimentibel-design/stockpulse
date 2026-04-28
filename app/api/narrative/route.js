@@ -1,7 +1,7 @@
 // app/api/narrative/route.js
 // Caché en memoria — reduce llamadas a Claude cuando distintos usuarios buscan el mismo ticker
-const cache = new Map() // { ticker_RANGE: { data, ts } }
-const CACHE_TTL = 4 * 60 * 60 * 1000 // 4 horas en ms
+const cache = new Map()
+const CACHE_TTL = 4 * 60 * 60 * 1000 // 4 horas
 
 function getCached(key) {
   const entry = cache.get(key)
@@ -21,9 +21,8 @@ export async function POST(request) {
     const claudeKey = process.env.ANTHROPIC_API_KEY
     if (!claudeKey) return Response.json({ error: 'Claude API key no configurada en el servidor.' }, { status: 500 })
 
-    const { ticker, companyName, sector, news } = data
+    const { ticker, companyName, sector, news, price, priceChangeToday, ma50, ma200, high52, low52, change1m, rsi, macd, macdSignal, relVol, pe, peSector, epsGrowth, netMargin, de, roe, divYield } = data
 
-    // Intentar caché primero
     const cacheKey = ticker?.toUpperCase()
     const cached = getCached(cacheKey)
     if (cached) {
@@ -33,57 +32,54 @@ export async function POST(request) {
     console.log(`[narrative] Cache MISS: ${cacheKey} — llamando a Claude`)
 
     const today = new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+
     const newsContext = news?.length
       ? news.map(n => `- ${n.title} (${n.publisher || ''}, ${n.published?.split('T')[0] || ''})`).join('\n')
       : 'No hay noticias disponibles.'
 
+    const metricsContext = [
+      price        != null ? `Precio: $${price} (${priceChangeToday >= 0 ? '+' : ''}${priceChangeToday}% hoy)` : null,
+      ma50         != null ? `MA50: $${ma50} · MA200: $${ma200}` : null,
+      high52       != null ? `Rango 52W: $${low52} – $${high52}` : null,
+      change1m     != null ? `Cambio 1M: ${change1m}%` : null,
+      rsi          != null ? `RSI: ${rsi}` : null,
+      macd         != null ? `MACD: ${macd} · Señal: ${macdSignal}` : null,
+      relVol       != null ? `Volumen relativo: ${relVol}x` : null,
+      pe           != null ? `P/E: ${pe} (sector: ${peSector})` : null,
+      epsGrowth    != null ? `Crecimiento EPS: ${epsGrowth}%` : null,
+      netMargin    != null ? `Margen neto: ${netMargin}%` : null,
+      de           != null ? `D/E: ${de}` : null,
+      roe          != null ? `ROE: ${roe}%` : null,
+      divYield     != null ? `Dividend yield: ${divYield}%` : null,
+    ].filter(Boolean).join('\n')
+
     const prompt = `Hoy es ${today}. Sos un analista financiero experto escribiendo para el inversor hispanoparlante no profesional.
 
-Buscá los datos más recientes de la acción ${ticker} (${companyName || ticker}${sector ? ', ' + sector : ''}) y respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
+Acción: ${ticker} — ${companyName || ticker}${sector ? ' · ' + sector : ''}
 
-{
-  "extraData": {
-    "price": precio_actual,
-    "priceChangeToday": variacion_hoy_pct,
-    "ma50": ma50,
-    "ma200": ma200,
-    "high52": maximo_52_semanas,
-    "low52": minimo_52_semanas,
-    "change1m": cambio_1_mes_pct,
-    "rsi": rsi_14,
-    "macd": macd,
-    "macdSignal": senal_macd,
-    "relVol": volumen_relativo,
-    "pe": pe_ratio,
-    "peSector": pe_del_sector,
-    "epsGrowth": crecimiento_eps_anual_pct,
-    "netMargin": margen_neto_pct,
-    "de": deuda_patrimonio,
-    "roe": roe_pct,
-    "divYield": dividend_yield_pct
-  },
-  "technical_summary": "2-3 oraciones sobre la situación técnica actual con números reales.",
-  "fundamental_summary": "2-3 oraciones sobre el contexto fundamental y valuación.",
-  "market_sentiment": "2-3 oraciones sobre el sentimiento de mercado actual.",
-  "analyst_summary": "2-3 oraciones sobre lo más relevante para el inversor ahora.",
-  "news_context": ["titular 1 con contexto de impacto", "titular 2", "titular 3"],
-  "key_opportunity": "Una oración sobre la oportunidad principal ahora.",
-  "key_risk": "Una oración sobre el riesgo principal ahora.",
-  "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
-}
+DATOS DE MERCADO (usá estos números exactos en tu análisis, no inventes otros):
+${metricsContext || 'Sin datos numéricos disponibles.'}
 
-Noticias de Polygon:
+NOTICIAS RECIENTES:
 ${newsContext}
 
-Usá null para valores no disponibles. Todos los valores en extraData deben ser números.`
+Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
+
+{
+  "technical_summary": "2-3 oraciones sobre la situación técnica actual usando los datos provistos.",
+  "fundamental_summary": "2-3 oraciones sobre el contexto fundamental y valuación usando los datos provistos.",
+  "analyst_summary": "2-3 oraciones sobre lo más relevante para el inversor ahora, considerando las noticias.",
+  "key_opportunity": "Una oración concreta sobre la oportunidad principal ahora.",
+  "key_risk": "Una oración concreta sobre el riesgo principal ahora.",
+  "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
+}`
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -99,10 +95,9 @@ Usá null para valores no disponibles. Todos los valores en extraData deben ser 
     if (s === -1 || e === -1) throw new Error('Claude no devolvió JSON válido.')
     const parsed = JSON.parse(raw.slice(s, e + 1))
 
-    // Guardar en caché
     setCached(cacheKey, parsed)
-
     return Response.json(parsed)
+
   } catch (err) {
     return Response.json({ error: err.message || 'Error generando narrativa.' }, { status: 500 })
   }
