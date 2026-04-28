@@ -1,7 +1,6 @@
 // app/api/narrative/route.js
-// Caché en memoria — reduce llamadas a Claude cuando distintos usuarios buscan el mismo ticker
 const cache = new Map()
-const CACHE_TTL = 4 * 60 * 60 * 1000 // 4 horas
+const CACHE_TTL = 4 * 60 * 60 * 1000
 
 function getCached(key) {
   const entry = cache.get(key)
@@ -21,7 +20,7 @@ export async function POST(request) {
     const claudeKey = process.env.ANTHROPIC_API_KEY
     if (!claudeKey) return Response.json({ error: 'Claude API key no configurada en el servidor.' }, { status: 500 })
 
-    const { ticker, companyName, sector, news, price, priceChangeToday, ma50, ma200, high52, low52, change1m, rsi, macd, macdSignal, relVol, pe, peSector, epsGrowth, netMargin, de, roe, divYield } = data
+    const { ticker, companyName, sector, news, price, priceChangeToday, high, low } = data
 
     const cacheKey = ticker?.toUpperCase()
     const cached = getCached(cacheKey)
@@ -37,40 +36,28 @@ export async function POST(request) {
       ? news.map(n => `- ${n.title} (${n.publisher || ''}, ${n.published?.split('T')[0] || ''})`).join('\n')
       : 'No hay noticias disponibles.'
 
-    const metricsContext = [
-      price        != null ? `Precio: $${price} (${priceChangeToday >= 0 ? '+' : ''}${priceChangeToday}% hoy)` : null,
-      ma50         != null ? `MA50: $${ma50} · MA200: $${ma200}` : null,
-      high52       != null ? `Rango 52W: $${low52} – $${high52}` : null,
-      change1m     != null ? `Cambio 1M: ${change1m}%` : null,
-      rsi          != null ? `RSI: ${rsi}` : null,
-      macd         != null ? `MACD: ${macd} · Señal: ${macdSignal}` : null,
-      relVol       != null ? `Volumen relativo: ${relVol}x` : null,
-      pe           != null ? `P/E: ${pe} (sector: ${peSector})` : null,
-      epsGrowth    != null ? `Crecimiento EPS: ${epsGrowth}%` : null,
-      netMargin    != null ? `Margen neto: ${netMargin}%` : null,
-      de           != null ? `D/E: ${de}` : null,
-      roe          != null ? `ROE: ${roe}%` : null,
-      divYield     != null ? `Dividend yield: ${divYield}%` : null,
-    ].filter(Boolean).join('\n')
+    const priceContext = price
+      ? `Precio actual: $${price} (${priceChangeToday >= 0 ? '+' : ''}${priceChangeToday}% hoy) · Rango día: $${low} – $${high}`
+      : 'Precio no disponible.'
 
     const prompt = `Hoy es ${today}. Sos un analista financiero experto escribiendo para el inversor hispanoparlante no profesional.
 
 Acción: ${ticker} — ${companyName || ticker}${sector ? ' · ' + sector : ''}
+${priceContext}
 
-DATOS DE MERCADO (usá estos números exactos en tu análisis, no inventes otros):
-${metricsContext || 'Sin datos numéricos disponibles.'}
-
-NOTICIAS RECIENTES:
+NOTICIAS DE HOY (fuente: Polygon):
 ${newsContext}
+
+Tu tarea: escribir un análisis narrativo de esta acción usando tu conocimiento actualizado de los fundamentales, valuación, situación técnica y consenso de analistas de ${ticker}. Usá los datos de precio y noticias de arriba cuando sean relevantes.
 
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
 
 {
-  "technical_summary": "2-3 oraciones sobre la situación técnica actual usando los datos provistos.",
-  "fundamental_summary": "2-3 oraciones sobre el contexto fundamental y valuación usando los datos provistos.",
-  "analyst_summary": "2-3 oraciones sobre lo más relevante para el inversor ahora, considerando las noticias.",
-  "key_opportunity": "Una oración concreta sobre la oportunidad principal ahora.",
-  "key_risk": "Una oración concreta sobre el riesgo principal ahora.",
+  "technical_summary": "2-3 oraciones sobre la situación técnica actual — tendencia, medias móviles, momentum.",
+  "fundamental_summary": "2-3 oraciones sobre fundamentales y valuación — P/E, crecimiento, márgenes, deuda.",
+  "analyst_summary": "2-3 oraciones sobre lo más relevante para el inversor ahora, integrando las noticias recientes.",
+  "key_opportunity": "Una oración concreta sobre la oportunidad principal en este momento.",
+  "key_risk": "Una oración concreta sobre el riesgo principal en este momento.",
   "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
 }`
 
