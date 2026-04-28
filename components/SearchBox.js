@@ -46,22 +46,23 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
   }
 
   function handleSearch() {
-    const t = selectedTicker || query.toUpperCase().trim()
-    setTicker(t)
+    if (!selectedTicker) return
     setShowSuggestions(false)
-    onSearch(t)
+    onSearch(selectedTicker)
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Enter' && !loading) handleSearch()
+    if (e.key === 'Enter' && selectedTicker && !loading) handleSearch()
     if (e.key === 'Escape') setShowSuggestions(false)
   }
 
   function handleInputChange(e) {
     setQuery(e.target.value)
     setSelectedTicker(null)
-    setTicker(e.target.value.toUpperCase())
+    setTicker('')
   }
+
+  const canAnalyze = !!selectedTicker && !loading
 
   return (
     <div className="relative mb-2" ref={wrapperRef}>
@@ -110,15 +111,19 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
             </div>
           )}
         </div>
-        <button onClick={handleSearch} disabled={loading || !query.trim()}
+        <button onClick={handleSearch} disabled={!canAnalyze}
           className="px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ background: 'var(--accent)', color: '#fff', fontFamily: 'Syne, sans-serif', whiteSpace: 'nowrap' }}>
           {loading ? 'Analizando...' : 'Analizar'}
         </button>
       </div>
       {selectedTicker
-        ? <p className="text-xs mt-2" style={{ color: 'var(--green)' }}>Ticker: <strong>{selectedTicker}</strong></p>
-        : <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Escribí el nombre o el ticker. Ej: Apple, AAPL, Nvidia, NVDA, Mercado Libre, MELI</p>
+        ? <p className="text-xs mt-2" style={{ color: 'var(--green)' }}>✓ <strong>{selectedTicker}</strong> — {query}</p>
+        : <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>
+            {query.length >= 2 && !searching
+              ? 'Elegí una empresa del dropdown para analizar'
+              : 'Escribí el nombre o el ticker. Ej: Apple, AAPL, Nvidia, NVDA, Mercado Libre, MELI'}
+          </p>
       }
     </div>
   )
