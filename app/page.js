@@ -45,33 +45,50 @@ export default function Home() {
     }, 2000)
 
     try {
+      // 1 — Datos de mercado + fundamentales + earnings
       const mdRes = await fetch('/api/market-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: t }),
       })
       const md = await mdRes.json()
-      if (!mdRes.ok || md.error) throw new Error(md.error || 'No pudimos obtener datos para este ticker. Verificá que sea un símbolo válido: AAPL, NVDA, MELI.')
+      if (!mdRes.ok || md.error) throw new Error(
+        md.error || 'No pudimos obtener datos para este ticker. Verificá que sea un símbolo válido: AAPL, NVDA, MELI.'
+      )
       setMarketData(md)
 
-      const prelimResult = computeAnalysis({ ...md, ...manualData })
+      // 2 — Calcular panel ANTES de llamar a Claude
+      // Enriquecer con fundamentales de Polygon si existen
+      const enrichedForAnalysis = {
+        ...md,
+        ...(md.fundamentals || {}),
+        ...manualData,
+      }
+      const prelimResult = computeAnalysis(enrichedForAnalysis)
       setAnalysis(prelimResult)
 
+      // 3 — Pasar panelData a narrative para validación cruzada
       setLoadingMsg('Generando análisis completo con IA...')
       const narRes = await fetch('/api/narrative', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: md }),
+        body: JSON.stringify({
+          data: {
+            ...md,
+            // Pasar veredicto del panel para que Claude no lo contradiga
+            panelData: {
+              trend:     prelimResult.trend,
+              signal:    prelimResult.signal,
+              score:     prelimResult.score,
+              sentiment: prelimResult.sentiment,
+            },
+          },
+        }),
       })
       const nar = await narRes.json()
 
       if (!nar.error) {
         setNarrative(nar)
-        if (nar.extraData) {
-          const enrichedData = { ...md, ...nar.extraData }
-          setMarketData(enrichedData)
-          setAnalysis(computeAnalysis({ ...enrichedData, ...manualData }))
-        }
       } else {
         setNarrative({ _error: nar.error })
       }
@@ -155,7 +172,11 @@ export default function Home() {
                 values={manualData}
                 onChange={setManualData}
                 onAnalyze={() => {
-                  const result = computeAnalysis({ ...marketData, ...manualData })
+                  const result = computeAnalysis({
+                    ...marketData,
+                    ...(marketData.fundamentals || {}),
+                    ...manualData,
+                  })
                   setAnalysis(result)
                   setActiveTab('resultado')
                   resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
