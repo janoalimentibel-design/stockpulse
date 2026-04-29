@@ -57,6 +57,66 @@ function calcChange1M(closes) {
   return Math.round(((current - monthAgo) / monthAgo) * 100 * 10) / 10
 }
 
+// Calcula fundamentales desde los datos de Polygon financials
+function calcFundamentals(financials, currentPrice) {
+  try {
+    const results = financials?.results
+    if (!results?.length) return null
+
+    // Tomamos el reporte más reciente
+    const latest = results[0]
+    const income = latest?.financials?.income_statement
+    const balance = latest?.financials?.balance_sheet
+
+    if (!income || !balance) return null
+
+    const netIncome = income?.net_income_loss?.value ?? null
+    const revenue = income?.revenues?.value ?? null
+    const eps = income?.basic_earnings_per_share?.value ?? null
+
+    const totalLiabilities = balance?.liabilities?.value ?? null
+    const totalEquity = balance?.equity?.value ?? null
+    const totalAssets = balance?.assets?.value ?? null
+
+    // Cálculos
+    const netMargin = revenue && netIncome ? Math.round((netIncome / revenue) * 1000) / 10 : null
+    const de = totalLiabilities && totalEquity && totalEquity > 0
+      ? Math.round((totalLiabilities / totalEquity) * 100) / 100 : null
+    const roe = netIncome && totalEquity && totalEquity > 0
+      ? Math.round((netIncome / totalEquity) * 1000) / 10 : null
+    const pe = currentPrice && eps && eps > 0
+      ? Math.round((currentPrice / eps) * 10) / 10 : null
+
+    // EPS growth: comparar con reporte del año anterior si existe
+    let epsGrowth = null
+    if (results.length >= 5 && eps != null) {
+      const yearAgo = results[4]?.financials?.income_statement?.basic_earnings_per_share?.value ?? null
+      if (yearAgo != null && yearAgo !== 0) {
+        epsGrowth = Math.round(((eps - yearAgo) / Math.abs(yearAgo)) * 1000) / 10
+      }
+    }
+
+    return { netMargin, de, roe, pe, epsGrowth }
+  } catch {
+    return null
+  }
+}
+
+// Calcula días hasta próximo earnings desde la fecha de anuncio
+function calcEarningsDays(earningsDate) {
+  if (!earningsDate) return null
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const eDate = new Date(earningsDate)
+    eDate.setHours(0, 0, 0, 0)
+    const diff = Math.round((eDate - today) / (1000 * 60 * 60 * 24))
+    return diff
+  } catch {
+    return null
+  }
+}
+
 export async function POST(request) {
   try {
     const { ticker } = await request.json()
@@ -68,7 +128,7 @@ export async function POST(request) {
     const t = ticker.toUpperCase().trim()
 
     // 1 — Datos de la empresa (Polygon)
-    let companyName = t, sector = null
+    let companyName = t, sector = null, nextEarningsDate = null
     try {
       const detRes = await fetch(`https://api.polygon.io/v3/reference/tickers/${t}?apiKey=${polygonKey}`)
       const det = await detRes.json()
@@ -128,22 +188,70 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 4 — Noticias (Polygon)
+    // 4 — Fundamentales desde Polygon (Fix #1 — elimina invención de D/E, ROE, P/E)
+    let fundamentals = null
+    try {
+      const finRes = await fetch(
+        `https://api.polygon.io/vX/reference/financials?ticker=${t}&limit=1&timeframe=ttm&sort=period_of_report_date&order=desc&apiKey=${polygonKey}`
+      )
+      const finData = await finRes.json()
+      fundamentals = calcFundamentals(finData, price)
+    } catch {}
+
+    // 5 — Próximo earnings (Polygon ticker details incluye earnings_announcement en algunos tickers)
+    // Usamos Yahoo Finance como fallback para earnings date
+    try {
+      const yhEarningsRes = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=1d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      )
+      const yhEarningsData = await yhEarningsRes.json()
+      const earningsTimestamp = yhEarningsData?.chart?.result?.[0]?.meta?.earningsTimestamp
+      if (earningsTimestamp) {
+        nextEarningsDate = new Date(earningsTimestamp * 1000).toISOString().split('T')[0]
+      }
+    } catch {}
+
+    // 6 — Noticias (Polygon — últimos 7 días)
     let news = []
     try {
-      const newsRes = await fetch(`https://api.polygon.io/v2/reference/news?ticker=${t}&limit=5&order=desc&sort=published_utc&apiKey=${polygonKey}`)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const newsRes = await fetch(
+        `https://api.polygon.io/v2/reference/news?ticker=${t}&limit=10&order=desc&sort=published_utc&published_utc.gte=${sevenDaysAgo}&apiKey=${polygonKey}`
+      )
       const newsData = await newsRes.json()
-      news = (newsData.results || []).slice(0, 5).map(n => ({
-        title: n.title, published: n.published_utc,
-        url: n.article_url, publisher: n.publisher?.name,
-      }))
+
+      // Si no hay noticias en 7 días, buscar en 30 días
+      if (!newsData.results?.length) {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const newsRes2 = await fetch(
+          `https://api.polygon.io/v2/reference/news?ticker=${t}&limit=5&order=desc&sort=published_utc&published_utc.gte=${thirtyDaysAgo}&apiKey=${polygonKey}`
+        )
+        const newsData2 = await newsRes2.json()
+        news = (newsData2.results || []).slice(0, 5).map(n => ({
+          title: n.title, published: n.published_utc,
+          url: n.article_url, publisher: n.publisher?.name,
+        }))
+      } else {
+        news = newsData.results.slice(0, 5).map(n => ({
+          title: n.title, published: n.published_utc,
+          url: n.article_url, publisher: n.publisher?.name,
+        }))
+      }
     } catch {}
+
+    const nextEarningsDays = calcEarningsDays(nextEarningsDate)
 
     return Response.json({
       ticker: t, companyName, sector, news,
       price, priceChangeToday, open, high, low,
       ma50, ma200, rsi, macd, macdSignal,
       relVol, change1m, high52, low52,
+      // Fundamentales calculados desde Polygon (no Claude)
+      fundamentals,
+      // Earnings
+      nextEarningsDate,
+      nextEarningsDays,
       fetchedAt: new Date().toISOString()
     })
   } catch (err) {
