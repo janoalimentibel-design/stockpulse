@@ -1,5 +1,4 @@
 // app/api/market-data/route.js
-// Indicadores técnicos inline — sin dependencia de import externo
 
 function calcMA(closes, period) {
   if (!closes || closes.length < period) return null
@@ -68,7 +67,7 @@ export async function POST(request) {
 
     const t = ticker.toUpperCase().trim()
 
-    // 1 — Datos de la empresa
+    // 1 — Datos de la empresa (Polygon)
     let companyName = t, sector = null
     try {
       const detRes = await fetch(`https://api.polygon.io/v3/reference/tickers/${t}?apiKey=${polygonKey}`)
@@ -77,9 +76,27 @@ export async function POST(request) {
       sector = det.results?.sic_description || null
     } catch {}
 
-    // 2 — Histórico 1 año → precio + indicadores técnicos
-    // Usamos aggs que SÍ está disponible en free tier (snapshot NO está disponible)
+    // 2 — Precio en tiempo real (Yahoo Finance)
     let price = null, priceChangeToday = null, open = null, high = null, low = null
+    try {
+      const yhRes = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=1d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      )
+      const yhData = await yhRes.json()
+      const meta = yhData?.chart?.result?.[0]?.meta
+      if (meta) {
+        price            = meta.regularMarketPrice ?? meta.previousClose ?? null
+        priceChangeToday = meta.regularMarketPrice && meta.previousClose
+          ? parseFloat(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose * 100).toFixed(2))
+          : null
+        open  = meta.regularMarketOpen ?? null
+        high  = meta.regularMarketDayHigh ?? null
+        low   = meta.regularMarketDayLow ?? null
+      }
+    } catch {}
+
+    // 3 — Histórico 1 año → indicadores técnicos (Polygon)
     let ma50 = null, ma200 = null, rsi = null, macd = null, macdSignal = null
     let relVol = null, change1m = null, high52 = null, low52 = null
 
@@ -91,22 +108,6 @@ export async function POST(request) {
       )
       const hist = await histRes.json()
       const bars = hist.results || []
-
-      if (bars.length >= 2) {
-        const last = bars[bars.length - 1]
-        const prev = bars[bars.length - 2]
-
-        // Precio del último bar disponible
-        price = last.c
-        open  = last.o
-        high  = last.h
-        low   = last.l
-
-        // % cambio respecto al cierre anterior
-        if (prev?.c && prev.c > 0) {
-          priceChangeToday = parseFloat(((last.c - prev.c) / prev.c * 100).toFixed(2))
-        }
-      }
 
       if (bars.length >= 20) {
         const closes  = bars.map(b => b.c)
@@ -127,7 +128,7 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 3 — Noticias
+    // 4 — Noticias (Polygon)
     let news = []
     try {
       const newsRes = await fetch(`https://api.polygon.io/v2/reference/news?ticker=${t}&limit=5&order=desc&sort=published_utc&apiKey=${polygonKey}`)
