@@ -77,30 +77,9 @@ export async function POST(request) {
       sector = det.results?.sic_description || null
     } catch {}
 
-    // 2 — Precio actual + variación del día (snapshot)
+    // 2 — Histórico 1 año → precio + indicadores técnicos
+    // Usamos aggs que SÍ está disponible en free tier (snapshot NO está disponible)
     let price = null, priceChangeToday = null, open = null, high = null, low = null
-    try {
-      const snapRes = await fetch(`https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers/${t}?apiKey=${polygonKey}`)
-      const snap = await snapRes.json()
-      const tkr = snap.ticker
-      const day = tkr?.day
-      const prevDay = tkr?.prevDay
-      const prevClose = prevDay?.c
-
-      if (day?.c && day.c > 0) {
-        price = day.c; open = day.o; high = day.h; low = day.l
-      } else if (prevClose && prevClose > 0) {
-        price = prevClose; open = prevDay.o; high = prevDay.h; low = prevDay.l
-      }
-
-      if (tkr?.todayChangePercent != null) {
-        priceChangeToday = parseFloat(Number(tkr.todayChangePercent).toFixed(2))
-      } else if (price && prevClose && price !== prevClose) {
-        priceChangeToday = parseFloat(((price - prevClose) / prevClose * 100).toFixed(2))
-      }
-    } catch {}
-
-    // 3 — Histórico 1 año → calcular indicadores técnicos localmente
     let ma50 = null, ma200 = null, rsi = null, macd = null, macdSignal = null
     let relVol = null, change1m = null, high52 = null, low52 = null
 
@@ -113,26 +92,42 @@ export async function POST(request) {
       const hist = await histRes.json()
       const bars = hist.results || []
 
+      if (bars.length >= 2) {
+        const last = bars[bars.length - 1]
+        const prev = bars[bars.length - 2]
+
+        // Precio del último bar disponible
+        price = last.c
+        open  = last.o
+        high  = last.h
+        low   = last.l
+
+        // % cambio respecto al cierre anterior
+        if (prev?.c && prev.c > 0) {
+          priceChangeToday = parseFloat(((last.c - prev.c) / prev.c * 100).toFixed(2))
+        }
+      }
+
       if (bars.length >= 20) {
         const closes  = bars.map(b => b.c)
         const highs   = bars.map(b => b.h)
         const lows    = bars.map(b => b.l)
         const volumes = bars.map(b => b.v)
 
-        ma50      = calcMA(closes, 50)
-        ma200     = calcMA(closes, 200)
-        rsi       = calcRSI(closes, 14)
-        const m   = calcMACD(closes)
-        macd      = m.macd
+        ma50       = calcMA(closes, 50)
+        ma200      = calcMA(closes, 200)
+        rsi        = calcRSI(closes, 14)
+        const m    = calcMACD(closes)
+        macd       = m.macd
         macdSignal = m.macdSignal
-        relVol    = calcRelVol(volumes)
-        change1m  = calcChange1M(closes)
-        high52    = Math.round(Math.max(...highs) * 100) / 100
-        low52     = Math.round(Math.min(...lows) * 100) / 100
+        relVol     = calcRelVol(volumes)
+        change1m   = calcChange1M(closes)
+        high52     = Math.round(Math.max(...highs) * 100) / 100
+        low52      = Math.round(Math.min(...lows) * 100) / 100
       }
     } catch {}
 
-    // 4 — Noticias
+    // 3 — Noticias
     let news = []
     try {
       const newsRes = await fetch(`https://api.polygon.io/v2/reference/news?ticker=${t}&limit=5&order=desc&sort=published_utc&apiKey=${polygonKey}`)
