@@ -1,4 +1,5 @@
 import './globals.css'
+import { PostHogProvider } from '../components/PostHogProvider'
 
 export const metadata = {
   title: 'StockPulse — Análisis de acciones en segundos',
@@ -8,7 +9,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <PostHogProvider>
+          {children}
+        </PostHogProvider>
+      </body>
     </html>
   )
 }

@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef } from 'react'
+import { usePostHog } from 'posthog-js/react'
 import { computeAnalysis } from '../lib/analyze'
 import Navbar from '../components/Navbar'
 import SearchBox from '../components/SearchBox'
@@ -21,6 +22,7 @@ function friendlyError(raw) {
 }
 
 export default function Home() {
+  const posthog = usePostHog()
   const [ticker,     setTicker]     = useState('')
   const [loading,    setLoading]    = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
@@ -90,10 +92,20 @@ export default function Home() {
       })
       const nar = await narRes.json()
       setNarrative(nar.error ? { _error: nar.error } : nar)
+      // Track análisis completado
+      posthog?.capture('analysis_completed', {
+        ticker: t,
+        score: prelimResult.score,
+        trend: prelimResult.trend,
+        has_fundamentals: !!(md.fundamentals?.de || md.fundamentals?.roe),
+        narrative_ok: !nar.error,
+      })
 
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (err) {
-      setError(friendlyError(err.message))
+      const friendlyMsg = friendlyError(err.message)
+      setError(friendlyMsg)
+      posthog?.capture('analysis_error', { ticker: t, error: err.message })
     } finally {
       clearInterval(msgInterval)
       setLoading(false)
