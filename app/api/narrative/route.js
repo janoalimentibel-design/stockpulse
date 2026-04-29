@@ -193,12 +193,12 @@ Momentum 1 mes: ${change1mStr}
 ${fundContext}
 
 ━━━ CALENDARIO ━━━
-${earningsContext || 'Sin datos de earnings disponibles'}
+${earningsContext || 'Sin datos de earnings disponibles. Usá tu conocimiento actualizado: ¿cuándo reporta ${ticker} sus próximos resultados? ¿Reportó recientemente (últimas 4 semanas)? Si reportó recientemente, mencioná EPS real vs estimado. Si el próximo earnings es en menos de 14 días, es OBLIGATORIO mencionarlo en analyst_summary como catalizador clave. Si no tenés certeza de la fecha exacta, indicá el mes aproximado.'}
 
 ${panelVeredicto}
 
 ━━━ NOTICIAS ÚLTIMOS 7-30 DÍAS (fuente: Polygon) ━━━
-${newsContext || 'Sin noticias indexadas en Polygon para este período.'}
+${newsContext || 'Sin noticias indexadas en Polygon para este período. Usá tu conocimiento para mencionar upgrades/downgrades de analistas o noticias corporativas relevantes de las últimas 4 semanas para ${ticker}.'}
 
 ━━━ REGLAS CRÍTICAS — LEER ANTES DE RESPONDER ━━━
 1. NUNCA inventes números. Solo podés citar cifras que estén explícitamente en los datos de arriba.
