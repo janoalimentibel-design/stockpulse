@@ -6,6 +6,20 @@ import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
 import ManualForm from '../components/ManualForm'
 
+function friendlyError(raw) {
+  if (!raw) return 'Ocurrió un error inesperado. Intentá de nuevo.'
+  const msg = raw.toLowerCase()
+  if (msg.includes('ticker') || msg.includes('not found') || msg.includes('no results'))
+    return 'No encontramos datos para ese ticker. Verificá que sea un símbolo válido del NYSE o NASDAQ: AAPL, NVDA, MELI, GOOGL.'
+  if (msg.includes('rate limit') || msg.includes('too many'))
+    return 'Demasiadas consultas seguidas. Esperá unos segundos e intentá de nuevo.'
+  if (msg.includes('network') || msg.includes('fetch'))
+    return 'Error de conexión. Verificá tu internet e intentá de nuevo.'
+  if (msg.includes('claude') || msg.includes('anthropic'))
+    return 'Error al generar el análisis con IA. Los datos técnicos están disponibles igual.'
+  return 'No pudimos obtener datos para este ticker. Probá con: AAPL, NVDA, MELI, GOOGL, AMZN.'
+}
+
 export default function Home() {
   const [ticker,     setTicker]     = useState('')
   const [loading,    setLoading]    = useState(false)
@@ -21,7 +35,7 @@ export default function Home() {
   const msgs = [
     'Buscando datos de mercado...',
     'Obteniendo noticias recientes...',
-    'Consultando precio y métricas...',
+    'Calculando indicadores técnicos...',
     'Generando análisis con IA...',
     'Casi listo...',
   ]
@@ -45,29 +59,19 @@ export default function Home() {
     }, 2000)
 
     try {
-      // 1 — Datos de mercado + fundamentales + earnings
       const mdRes = await fetch('/api/market-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: t }),
       })
       const md = await mdRes.json()
-      if (!mdRes.ok || md.error) throw new Error(
-        md.error || 'No pudimos obtener datos para este ticker. Verificá que sea un símbolo válido: AAPL, NVDA, MELI.'
-      )
+      if (!mdRes.ok || md.error) throw new Error(md.error || 'ticker_not_found')
       setMarketData(md)
 
-      // 2 — Calcular panel ANTES de llamar a Claude
-      // Enriquecer con fundamentales de Polygon si existen
-      const enrichedForAnalysis = {
-        ...md,
-        ...(md.fundamentals || {}),
-        ...manualData,
-      }
+      const enrichedForAnalysis = { ...md, ...(md.fundamentals || {}), ...manualData }
       const prelimResult = computeAnalysis(enrichedForAnalysis)
       setAnalysis(prelimResult)
 
-      // 3 — Pasar panelData a narrative para validación cruzada
       setLoadingMsg('Generando análisis completo con IA...')
       const narRes = await fetch('/api/narrative', {
         method: 'POST',
@@ -75,7 +79,6 @@ export default function Home() {
         body: JSON.stringify({
           data: {
             ...md,
-            // Pasar veredicto del panel para que Claude no lo contradiga
             panelData: {
               trend:     prelimResult.trend,
               signal:    prelimResult.signal,
@@ -86,16 +89,11 @@ export default function Home() {
         }),
       })
       const nar = await narRes.json()
-
-      if (!nar.error) {
-        setNarrative(nar)
-      } else {
-        setNarrative({ _error: nar.error })
-      }
+      setNarrative(nar.error ? { _error: nar.error } : nar)
 
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (err) {
-      setError(err.message)
+      setError(friendlyError(err.message))
     } finally {
       clearInterval(msgInterval)
       setLoading(false)
@@ -109,14 +107,22 @@ export default function Home() {
       <Navbar />
       <main className="max-w-[1280px] mx-auto px-5 pb-20 pt-6">
 
-        {/* Hero */}
-        <div className="mb-8">
+        {/* Landing mínima */}
+        <div className="mb-7">
           <h1 className="text-3xl font-bold tracking-tight mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>
             Análisis de acciones
           </h1>
-          <p className="text-sm" style={{ color: 'var(--text2)' }}>
-            Técnico · Fundamental · Narrativa IA · en español — gratis, sin registro
+          <p className="text-sm mb-3" style={{ color: 'var(--text2)' }}>
+            Escribí un ticker y en segundos tenés análisis técnico, fundamental y narrativa en español — sin ser experto, sin registro.
           </p>
+          <div className="flex gap-2 flex-wrap">
+            {['Técnico · 8 indicadores', 'Fundamental · D/E, ROE, márgenes', 'Narrativa IA en español', 'Gratis · sin registro'].map((tag, i) => (
+              <span key={i} className="text-[11px] px-2.5 py-1 rounded-full"
+                style={{ background: 'var(--bg2)', color: 'var(--text3)', border: '1px solid var(--border)' }}>
+                {tag}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* Buscador */}
@@ -127,7 +133,6 @@ export default function Home() {
           loading={loading}
         />
 
-        {/* Disclaimer */}
         {!hasResults && !loading && (
           <p className="text-[11px] mt-3" style={{ color: 'var(--text3)' }}>
             ⚠️ Herramienta informativa — no constituye asesoramiento financiero ni recomendación de inversión.
@@ -147,10 +152,11 @@ export default function Home() {
           </div>
         )}
 
-        {/* Error */}
+        {/* Error amigable */}
         {error && (
-          <div className="mt-4 p-4 rounded-xl text-sm" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', color: 'var(--red)' }}>
-            {error}
+          <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--red)' }}>No pudimos completar el análisis</p>
+            <p className="text-xs" style={{ color: 'var(--text2)' }}>{error}</p>
           </div>
         )}
 
@@ -172,11 +178,7 @@ export default function Home() {
                 values={manualData}
                 onChange={setManualData}
                 onAnalyze={() => {
-                  const result = computeAnalysis({
-                    ...marketData,
-                    ...(marketData.fundamentals || {}),
-                    ...manualData,
-                  })
+                  const result = computeAnalysis({ ...marketData, ...(marketData.fundamentals || {}), ...manualData })
                   setAnalysis(result)
                   setActiveTab('resultado')
                   resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -191,7 +193,7 @@ export default function Home() {
           <div className="text-center py-16" style={{ color: 'var(--text3)' }}>
             <p className="text-5xl mb-5">📈</p>
             <p className="text-sm mb-1">Escribí un ticker o nombre de empresa para ver el análisis completo.</p>
-            <p className="text-xs" style={{ color: 'var(--text3)' }}>Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN</p>
+            <p className="text-xs">Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN · KO · TSLA</p>
           </div>
         )}
       </main>
