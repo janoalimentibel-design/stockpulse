@@ -57,13 +57,15 @@ function calcChange1M(closes) {
   return Math.round(((current - monthAgo) / monthAgo) * 100 * 10) / 10
 }
 
-// Calcula fundamentales desde los datos de Polygon financials
+// FIX #1 — D/E ahora usa deuda financiera real, no total liabilities.
+// Polygon expone: long_term_debt, current_portion_of_long_term_debt, short_term_debt
+// bajo balance_sheet. Total liabilities incluía cuentas por pagar, deuda operativa, etc.
+// que inflan el ratio artificialmente (META: 0.68 inventado vs 0.36 real).
 function calcFundamentals(financials, currentPrice) {
   try {
     const results = financials?.results
     if (!results?.length) return null
 
-    // Tomamos el reporte más reciente
     const latest = results[0]
     const income = latest?.financials?.income_statement
     const balance = latest?.financials?.balance_sheet
@@ -71,23 +73,33 @@ function calcFundamentals(financials, currentPrice) {
     if (!income || !balance) return null
 
     const netIncome = income?.net_income_loss?.value ?? null
-    const revenue = income?.revenues?.value ?? null
-    const eps = income?.basic_earnings_per_share?.value ?? null
-
-    const totalLiabilities = balance?.liabilities?.value ?? null
+    const revenue   = income?.revenues?.value ?? null
+    const eps       = income?.basic_earnings_per_share?.value ?? null
     const totalEquity = balance?.equity?.value ?? null
-    const totalAssets = balance?.assets?.value ?? null
 
-    // Cálculos
-    const netMargin = revenue && netIncome ? Math.round((netIncome / revenue) * 1000) / 10 : null
-    const de = totalLiabilities && totalEquity && totalEquity > 0
-      ? Math.round((totalLiabilities / totalEquity) * 100) / 100 : null
+    // D/E FINANCIERO: solo deuda que genera intereses (long term + current portion + short term)
+    // Excluye: accounts payable, deferred revenue, operating lease liabilities, etc.
+    const longTermDebt         = balance?.long_term_debt?.value ?? 0
+    const currentLongTermDebt  = balance?.current_portion_of_long_term_debt?.value ?? 0
+    const shortTermDebt        = balance?.short_term_debt?.value ?? 0
+    const financialDebt        = longTermDebt + currentLongTermDebt + shortTermDebt
+
+    // Si Polygon no devuelve desglose de deuda financiera, fallback a total liabilities
+    // pero solo si financialDebt === 0 (todos los campos nulos → probablemente no hay deuda)
+    const totalLiabilities = balance?.liabilities?.value ?? null
+    const debtForRatio = financialDebt > 0 ? financialDebt : (totalLiabilities ?? 0)
+
+    const de = debtForRatio && totalEquity && totalEquity > 0
+      ? Math.round((debtForRatio / totalEquity) * 100) / 100 : null
+
+    const netMargin = revenue && netIncome
+      ? Math.round((netIncome / revenue) * 1000) / 10 : null
     const roe = netIncome && totalEquity && totalEquity > 0
       ? Math.round((netIncome / totalEquity) * 1000) / 10 : null
     const pe = currentPrice && eps && eps > 0
       ? Math.round((currentPrice / eps) * 10) / 10 : null
 
-    // EPS growth: comparar con reporte del año anterior si existe
+    // EPS growth YoY — comparar TTM actual vs TTM del año anterior (índice 4 en serie trimestral)
     let epsGrowth = null
     if (results.length >= 5 && eps != null) {
       const yearAgo = results[4]?.financials?.income_statement?.basic_earnings_per_share?.value ?? null
@@ -102,7 +114,6 @@ function calcFundamentals(financials, currentPrice) {
   }
 }
 
-// Calcula días hasta próximo earnings desde la fecha de anuncio
 function calcEarningsDays(earningsDate) {
   if (!earningsDate) return null
   try {
@@ -188,18 +199,17 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 4 — Fundamentales desde Polygon (Fix #1 — elimina invención de D/E, ROE, P/E)
+    // 4 — Fundamentales desde Polygon TTM (D/E ahora usa financial debt, no total liabilities)
     let fundamentals = null
     try {
       const finRes = await fetch(
-        `https://api.polygon.io/vX/reference/financials?ticker=${t}&limit=1&timeframe=ttm&sort=period_of_report_date&order=desc&apiKey=${polygonKey}`
+        `https://api.polygon.io/vX/reference/financials?ticker=${t}&limit=5&timeframe=quarterly&sort=period_of_report_date&order=desc&apiKey=${polygonKey}`
       )
       const finData = await finRes.json()
       fundamentals = calcFundamentals(finData, price)
     } catch {}
 
-    // 5 — Próximo earnings (Polygon ticker details incluye earnings_announcement en algunos tickers)
-    // Usamos Yahoo Finance como fallback para earnings date
+    // 5 — Próximo earnings (Yahoo Finance fallback)
     try {
       const yhEarningsRes = await fetch(
         `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=1d`,
@@ -212,7 +222,7 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 6 — Noticias (Polygon — últimos 7 días)
+    // 6 — Noticias (Polygon — últimos 7 días, fallback 30 días)
     let news = []
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -221,7 +231,6 @@ export async function POST(request) {
       )
       const newsData = await newsRes.json()
 
-      // Si no hay noticias en 7 días, buscar en 30 días
       if (!newsData.results?.length) {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         const newsRes2 = await fetch(
@@ -247,9 +256,7 @@ export async function POST(request) {
       price, priceChangeToday, open, high, low,
       ma50, ma200, rsi, macd, macdSignal,
       relVol, change1m, high52, low52,
-      // Fundamentales calculados desde Polygon (no Claude)
       fundamentals,
-      // Earnings
       nextEarningsDate,
       nextEarningsDays,
       fetchedAt: new Date().toISOString()
