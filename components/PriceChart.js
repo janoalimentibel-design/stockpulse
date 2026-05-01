@@ -19,9 +19,7 @@ export default function PriceChart({ ticker }) {
     setLoading(true)
     setError('')
     setHover(null)
-    setNeedsPro(false)
-    setPoints([])   // limpiar puntos anteriores al cambiar rango
-    setChange(null)
+    // NO limpiar points/change aquí — el canvas muestra datos anteriores mientras carga
     fetch('/api/price-history', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -29,12 +27,27 @@ export default function PriceChart({ ticker }) {
     })
       .then(r => r.json())
       .then(d => {
-        if (d.needsPro) { setNeedsPro(true); setPoints([]); return }
-        if (d.error) { setError(d.error); setPoints([]); return }
+        if (d.needsPro) {
+          setNeedsPro(true)
+          setPoints([])
+          setChange(null)
+          return
+        }
+        if (d.error) {
+          setError(d.error)
+          setPoints([])
+          setChange(null)
+          return
+        }
+        setNeedsPro(false)
         setPoints(d.points || [])
         setChange(d.change)
       })
-      .catch(() => setError('Error cargando historial.'))
+      .catch(() => {
+        setError('Error cargando historial.')
+        setPoints([])
+        setChange(null)
+      })
       .finally(() => setLoading(false))
   }, [ticker, range])
 
@@ -164,7 +177,7 @@ export default function PriceChart({ ticker }) {
 
   const isUp   = change !== null ? change >= 0 : true
   const active = hover || null
-  const lastPoint   = points.length > 0 ? points[points.length - 1] : null
+  const lastPoint    = points.length > 0 ? points[points.length - 1] : null
   const displayPoint = active ? active : lastPoint ? { price: lastPoint.c, o: lastPoint.o, h: lastPoint.h, l: lastPoint.l, v: lastPoint.v, pct: change } : null
 
   return (
@@ -186,14 +199,14 @@ export default function PriceChart({ ticker }) {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              {change !== null && !loading && (
+              {loading && <span className="text-xs" style={{ color: 'var(--text3)' }}>Cargando...</span>}
+              {!loading && change !== null && (
                 <span className="text-xs font-medium" style={{ color: isUp ? '#4ebb79' : '#e05050' }}>
                   {isUp ? '+' : ''}{change}% en este período
                 </span>
               )}
-              {loading && <span className="text-xs" style={{ color: 'var(--text3)' }}>Cargando...</span>}
-              {error && <span className="text-xs" style={{ color: 'var(--red)' }}>{error}</span>}
-              {needsPro && (
+              {!loading && error && <span className="text-xs" style={{ color: 'var(--red)' }}>{error}</span>}
+              {!loading && needsPro && (
                 <span className="text-xs" style={{ color: 'var(--text3)' }}>
                   Historial extendido próximamente
                 </span>
@@ -229,8 +242,14 @@ export default function PriceChart({ ticker }) {
         style={{ position: 'relative', width: '100%', height: 160, cursor: 'crosshair' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}>
+
+        {/* Overlay de loading sobre el canvas — no borra los puntos anteriores */}
         {loading && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(11,13,18,0.55)', zIndex: 2,
+          }}>
             <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
           </div>
         )}
