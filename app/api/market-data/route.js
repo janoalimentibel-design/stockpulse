@@ -57,10 +57,7 @@ function calcChange1M(closes) {
   return Math.round(((current - monthAgo) / monthAgo) * 100 * 10) / 10
 }
 
-// FIX #1 — D/E ahora usa deuda financiera real, no total liabilities.
-// Polygon expone: long_term_debt, current_portion_of_long_term_debt, short_term_debt
-// bajo balance_sheet. Total liabilities incluía cuentas por pagar, deuda operativa, etc.
-// que inflan el ratio artificialmente (META: 0.68 inventado vs 0.36 real).
+// FIX D/E — usa deuda financiera real, no total liabilities
 function calcFundamentals(financials, currentPrice) {
   try {
     const results = financials?.results
@@ -72,26 +69,21 @@ function calcFundamentals(financials, currentPrice) {
 
     if (!income || !balance) return null
 
-    const netIncome = income?.net_income_loss?.value ?? null
-    const revenue   = income?.revenues?.value ?? null
-    const eps       = income?.basic_earnings_per_share?.value ?? null
+    const netIncome  = income?.net_income_loss?.value ?? null
+    const revenue    = income?.revenues?.value ?? null
+    const eps        = income?.basic_earnings_per_share?.value ?? null
     const totalEquity = balance?.equity?.value ?? null
 
-    // D/E FINANCIERO: solo deuda que genera intereses (long term + current portion + short term)
-    // Excluye: accounts payable, deferred revenue, operating lease liabilities, etc.
-    const longTermDebt         = balance?.long_term_debt?.value ?? 0
-    const currentLongTermDebt  = balance?.current_portion_of_long_term_debt?.value ?? 0
-    const shortTermDebt        = balance?.short_term_debt?.value ?? 0
-    const financialDebt        = longTermDebt + currentLongTermDebt + shortTermDebt
-
-    // Si Polygon no devuelve desglose de deuda financiera, fallback a total liabilities
-    // pero solo si financialDebt === 0 (todos los campos nulos → probablemente no hay deuda)
-    const totalLiabilities = balance?.liabilities?.value ?? null
-    const debtForRatio = financialDebt > 0 ? financialDebt : (totalLiabilities ?? 0)
+    // Deuda financiera: long term + current portion + short term (excluye pasivos operativos)
+    const longTermDebt        = balance?.long_term_debt?.value ?? 0
+    const currentLongTermDebt = balance?.current_portion_of_long_term_debt?.value ?? 0
+    const shortTermDebt       = balance?.short_term_debt?.value ?? 0
+    const financialDebt       = longTermDebt + currentLongTermDebt + shortTermDebt
+    const totalLiabilities    = balance?.liabilities?.value ?? null
+    const debtForRatio        = financialDebt > 0 ? financialDebt : (totalLiabilities ?? 0)
 
     const de = debtForRatio && totalEquity && totalEquity > 0
       ? Math.round((debtForRatio / totalEquity) * 100) / 100 : null
-
     const netMargin = revenue && netIncome
       ? Math.round((netIncome / revenue) * 1000) / 10 : null
     const roe = netIncome && totalEquity && totalEquity > 0
@@ -99,7 +91,6 @@ function calcFundamentals(financials, currentPrice) {
     const pe = currentPrice && eps && eps > 0
       ? Math.round((currentPrice / eps) * 10) / 10 : null
 
-    // EPS growth YoY — comparar TTM actual vs TTM del año anterior (índice 4 en serie trimestral)
     let epsGrowth = null
     if (results.length >= 5 && eps != null) {
       const yearAgo = results[4]?.financials?.income_statement?.basic_earnings_per_share?.value ?? null
@@ -121,11 +112,79 @@ function calcEarningsDays(earningsDate) {
     today.setHours(0, 0, 0, 0)
     const eDate = new Date(earningsDate)
     eDate.setHours(0, 0, 0, 0)
-    const diff = Math.round((eDate - today) / (1000 * 60 * 60 * 24))
-    return diff
+    return Math.round((eDate - today) / (1000 * 60 * 60 * 24))
   } catch {
     return null
   }
+}
+
+// FIX 5 — Finnhub earnings calendar
+// Devuelve { nextEarningsDate, lastEarningsDate, lastEarningsBeat }
+// lastEarningsBeat: true = beat, false = miss, null = sin datos
+async function fetchEarnings(ticker, finnhubKey) {
+  if (!finnhubKey) return {}
+
+  const today     = new Date().toISOString().split('T')[0]
+  const in90days  = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const ago180days = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  let nextEarningsDate = null
+  let lastEarningsDate = null
+  let lastEarningsBeat = null
+
+  try {
+    // Próximo earnings — calendario hacia adelante
+    const calRes = await fetch(
+      `https://finnhub.io/api/v1/calendar/earnings?symbol=${ticker}&from=${today}&to=${in90days}&token=${finnhubKey}`,
+      { headers: { 'X-Finnhub-Token': finnhubKey } }
+    )
+    if (calRes.ok) {
+      const calData = await calRes.json()
+      const upcoming = calData?.earningsCalendar
+      if (upcoming?.length) {
+        // El primero es el más próximo (están ordenados asc)
+        nextEarningsDate = upcoming[0].date
+      }
+    }
+  } catch {}
+
+  try {
+    // Último earnings reportado — para beat/miss
+    const histRes = await fetch(
+      `https://finnhub.io/api/v1/stock/earnings?symbol=${ticker}&limit=4&token=${finnhubKey}`,
+      { headers: { 'X-Finnhub-Token': finnhubKey } }
+    )
+    if (histRes.ok) {
+      const histData = await histRes.json()
+      if (histData?.length) {
+        const last = histData[0] // más reciente primero
+        lastEarningsDate = last.period ?? null
+        if (last.actual != null && last.estimate != null) {
+          lastEarningsBeat = last.actual >= last.estimate
+        }
+      }
+    }
+  } catch {}
+
+  // Si no encontramos próximo earnings en el futuro, buscar en el pasado reciente
+  if (!nextEarningsDate) {
+    try {
+      const pastRes = await fetch(
+        `https://finnhub.io/api/v1/calendar/earnings?symbol=${ticker}&from=${ago180days}&to=${today}&token=${finnhubKey}`,
+        { headers: { 'X-Finnhub-Token': finnhubKey } }
+      )
+      if (pastRes.ok) {
+        const pastData = await pastRes.json()
+        const pastEarnings = pastData?.earningsCalendar
+        if (pastEarnings?.length) {
+          // El último reportado — usar como referencia de cuándo fue
+          nextEarningsDate = pastEarnings[pastEarnings.length - 1].date
+        }
+      }
+    } catch {}
+  }
+
+  return { nextEarningsDate, lastEarningsDate, lastEarningsBeat }
 }
 
 export async function POST(request) {
@@ -133,13 +192,14 @@ export async function POST(request) {
     const { ticker } = await request.json()
     if (!ticker) return Response.json({ error: 'Falta ticker.' }, { status: 400 })
 
-    const polygonKey = process.env.POLYGON_API_KEY
+    const polygonKey  = process.env.POLYGON_API_KEY
+    const finnhubKey  = process.env.FINNHUB_API_KEY  // opcional — sin él, no hay earnings
     if (!polygonKey) return Response.json({ error: 'Polygon API key no configurada en el servidor.' }, { status: 500 })
 
     const t = ticker.toUpperCase().trim()
 
     // 1 — Datos de la empresa (Polygon)
-    let companyName = t, sector = null, nextEarningsDate = null
+    let companyName = t, sector = null
     try {
       const detRes = await fetch(`https://api.polygon.io/v3/reference/tickers/${t}?apiKey=${polygonKey}`)
       const det = await detRes.json()
@@ -172,7 +232,7 @@ export async function POST(request) {
     let relVol = null, change1m = null, high52 = null, low52 = null
 
     try {
-      const to = new Date().toISOString().split('T')[0]
+      const to   = new Date().toISOString().split('T')[0]
       const from = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       const histRes = await fetch(
         `https://api.polygon.io/v2/aggs/ticker/${t}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=365&apiKey=${polygonKey}`
@@ -199,7 +259,7 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 4 — Fundamentales desde Polygon TTM (D/E ahora usa financial debt, no total liabilities)
+    // 4 — Fundamentales desde Polygon TTM (D/E usa financial debt)
     let fundamentals = null
     try {
       const finRes = await fetch(
@@ -209,18 +269,9 @@ export async function POST(request) {
       fundamentals = calcFundamentals(finData, price)
     } catch {}
 
-    // 5 — Próximo earnings (Yahoo Finance fallback)
-    try {
-      const yhEarningsRes = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=1d`,
-        { headers: { 'User-Agent': 'Mozilla/5.0' } }
-      )
-      const yhEarningsData = await yhEarningsRes.json()
-      const earningsTimestamp = yhEarningsData?.chart?.result?.[0]?.meta?.earningsTimestamp
-      if (earningsTimestamp) {
-        nextEarningsDate = new Date(earningsTimestamp * 1000).toISOString().split('T')[0]
-      }
-    } catch {}
+    // 5 — Earnings (Finnhub como fuente principal, sin fallback a Yahoo que devuelve null)
+    const { nextEarningsDate, lastEarningsDate, lastEarningsBeat } = await fetchEarnings(t, finnhubKey)
+    const nextEarningsDays = calcEarningsDays(nextEarningsDate)
 
     // 6 — Noticias (Polygon — últimos 7 días, fallback 30 días)
     let news = []
@@ -249,8 +300,6 @@ export async function POST(request) {
       }
     } catch {}
 
-    const nextEarningsDays = calcEarningsDays(nextEarningsDate)
-
     return Response.json({
       ticker: t, companyName, sector, news,
       price, priceChangeToday, open, high, low,
@@ -259,6 +308,8 @@ export async function POST(request) {
       fundamentals,
       nextEarningsDate,
       nextEarningsDays,
+      lastEarningsDate,
+      lastEarningsBeat,
       fetchedAt: new Date().toISOString()
     })
   } catch (err) {

@@ -72,6 +72,108 @@ function IndicatorRow({ ind }) {
   )
 }
 
+// FIX 3 — Traducciones contextuales de fundamentales.
+// Convierte el número crudo en una frase de 2-3 palabras que el usuario casual entiende.
+// P/E 26 + dir bull → "Barata vs sector". ROE 30% → "Alta rentabilidad".
+function getFundTag(name, displayVal, dir) {
+  const n = parseFloat(displayVal)
+  if (isNaN(n)) return null
+  const nm = name.toLowerCase()
+
+  if (nm.includes('roe')) {
+    if (n > 25) return 'Rentabilidad excepcional'
+    if (n > 15) return 'Alta rentabilidad'
+    if (n > 8)  return 'Rentabilidad aceptable'
+    return 'Rentabilidad baja'
+  }
+  if (nm.includes('margen')) {
+    if (n > 30) return 'Margen excepcional'
+    if (n > 15) return 'Margen saludable'
+    if (n > 7)  return 'Margen aceptable'
+    return 'Margen bajo · atención'
+  }
+  if (nm.includes('d/e') || nm.includes('deuda')) {
+    if (dir === 'bull') return 'Deuda controlada'
+    if (dir === 'bear') return 'Alto riesgo de deuda'
+    return 'Deuda moderada'
+  }
+  if (nm.includes('eps') || nm.includes('crecimiento')) {
+    if (n > 30) return 'Crecimiento excepcional'
+    if (n > 15) return 'Crecimiento fuerte'
+    if (n > 5)  return 'Crecimiento sólido'
+    if (n > 0)  return 'Crecimiento leve'
+    return 'Ganancias cayendo'
+  }
+  if (nm.includes('p/e')) {
+    if (dir === 'bull') return 'Barata vs sector'
+    if (dir === 'bear') return 'Cara vs sector'
+    return 'Valuación justa'
+  }
+  if (nm.includes('yield') || nm.includes('dividend')) {
+    if (n > 5) return 'Dividendo muy atractivo'
+    if (n > 2) return 'Dividendo atractivo'
+    if (n > 0) return 'Dividendo moderado'
+    return 'Sin dividendo'
+  }
+  return null
+}
+
+// Indicator row con traducción contextual para fundamentales
+function FundIndicatorRow({ ind }) {
+  const tag = getFundTag(ind.name, ind.displayVal, ind.dir)
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 8,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, color: 'var(--text2)' }}>{ind.name}</div>
+        {tag && (
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{tag}</div>
+        )}
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--text)', fontFamily: 'DM Mono, monospace', whiteSpace: 'nowrap' }}>
+        {ind.displayVal}
+      </span>
+      <SigBadge dir={ind.dir} />
+    </div>
+  )
+}
+
+// FIX 5 — Earnings badge: muestra próximo reporte o resultado reciente
+function EarningsBadge({ nextEarningsDate, nextEarningsDays, lastEarningsBeat }) {
+  if (!nextEarningsDate) return null
+
+  const isClose  = nextEarningsDays != null && nextEarningsDays >= 0 && nextEarningsDays <= 14
+  const isPast   = nextEarningsDays != null && nextEarningsDays < 0 && nextEarningsDays >= -14
+  const isFuture = nextEarningsDays != null && nextEarningsDays > 14
+
+  let bg, border, color, text
+  if (isClose) {
+    bg = 'var(--amber-bg)'; border = 'var(--amber-border)'; color = 'var(--amber)'
+    text = `⚡ Earnings en ${nextEarningsDays} días · ${nextEarningsDate}`
+  } else if (isPast) {
+    const beat = lastEarningsBeat === true ? ' · Beat ✓' : lastEarningsBeat === false ? ' · Miss ✗' : ''
+    bg = 'var(--bg3)'; border = 'var(--border)'; color = 'var(--text2)'
+    text = `Reportó hace ${Math.abs(nextEarningsDays)} días · ${nextEarningsDate}${beat}`
+  } else if (isFuture) {
+    bg = 'var(--bg3)'; border = 'var(--border)'; color = 'var(--text3)'
+    text = `Próximo earnings: ${nextEarningsDate}`
+  } else {
+    return null
+  }
+
+  return (
+    <div style={{
+      padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 500,
+      background: bg, border: `1px solid ${border}`, color,
+      marginBottom: 12, display: 'inline-block',
+    }}>
+      {text}
+    </div>
+  )
+}
+
 const MOBILE_TABS = [
   { id: 'veredicto', label: 'Veredicto' },
   { id: 'tecnico',   label: 'Técnico'   },
@@ -118,12 +220,43 @@ export default function ResultCard({
             </p>
           )}
           {narrative.analyst_summary && (
-            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65 }}>
+            <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65, marginBottom: narrative.what_to_do ? 8 : 0 }}>
               <span style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Para el inversor · </span>
               {narrative.analyst_summary}
             </p>
           )}
+
+          {/* FIX 4 — Sección ¿Qué hago yo? con 3 escenarios concretos */}
+          {narrative.what_to_do && (
+            <div style={{
+              marginTop: 10, background: 'var(--bg3)',
+              borderRadius: 8, padding: '10px 12px',
+              border: '1px solid var(--border)',
+            }}>
+              <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                ¿Qué hago yo?
+              </div>
+              {[
+                { key: 'tienes', label: 'Ya tenés la acción' },
+                { key: 'entras', label: 'Querés entrar' },
+                { key: 'sales',  label: 'Considerás salir' },
+              ].map(({ key, label }, i, arr) => narrative.what_to_do[key] ? (
+                <div key={key} style={{
+                  padding: '6px 0',
+                  borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', marginBottom: 2 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>
+                    {narrative.what_to_do[key]}
+                  </div>
+                </div>
+              ) : null)}
+            </div>
+          )}
         </div>
+
         {(narrative.key_opportunity || narrative.key_risk) && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
             {narrative.key_opportunity && (
@@ -155,7 +288,7 @@ export default function ResultCard({
   return (
     <div>
       {/* Header full width */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
             <h2 style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Syne', margin: 0 }}>{ticker}</h2>
@@ -180,6 +313,13 @@ export default function ResultCard({
           </div>
         )}
       </div>
+
+      {/* FIX 5 — Earnings badge debajo del header */}
+      <EarningsBadge
+        nextEarningsDate={marketData?.nextEarningsDate}
+        nextEarningsDays={marketData?.nextEarningsDays}
+        lastEarningsBeat={marketData?.lastEarningsBeat}
+      />
 
       {/* DESKTOP: 2 columnas */}
       <div className="result-desktop-grid">
@@ -252,11 +392,12 @@ export default function ResultCard({
             </div>
           )}
 
+          {/* FIX 3 — Fundamentales con traducción contextual usando FundIndicatorRow */}
           {fundInds.length > 0 && (
             <div>
               <SectionLabel>Fundamentales</SectionLabel>
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
-                {fundInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+                {fundInds.map((ind, i) => <FundIndicatorRow key={i} ind={ind} />)}
               </div>
             </div>
           )}
@@ -297,6 +438,13 @@ export default function ResultCard({
           </div>
         </div>
 
+        {/* Earnings badge mobile */}
+        <EarningsBadge
+          nextEarningsDate={marketData?.nextEarningsDate}
+          nextEarningsDays={marketData?.nextEarningsDays}
+          lastEarningsBeat={marketData?.lastEarningsBeat}
+        />
+
         <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
           {MOBILE_TABS.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)}
@@ -333,7 +481,8 @@ export default function ResultCard({
         )}
         {activeTab === 'tecnico' && (
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
-            {[...techInds, ...fundInds].map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+            {techInds.map((ind, i) => <IndicatorRow key={i} ind={ind} />)}
+            {fundInds.map((ind, i) => <FundIndicatorRow key={i} ind={ind} />)}
           </div>
         )}
         {activeTab === 'narrativa' && <NarrativaContent />}
