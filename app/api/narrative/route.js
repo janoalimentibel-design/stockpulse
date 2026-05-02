@@ -27,7 +27,13 @@ function sanitizeNarrative(obj) {
   if (!obj || typeof obj !== 'object') return obj
   const sanitized = {}
   for (const key of Object.keys(obj)) {
-    if (Array.isArray(obj[key])) {
+    if (key === 'what_to_do' && obj[key] && typeof obj[key] === 'object') {
+      // what_to_do es un objeto anidado — sanitizar sus valores string
+      sanitized[key] = {}
+      for (const k of Object.keys(obj[key])) {
+        sanitized[key][k] = typeof obj[key][k] === 'string' ? sanitizeText(obj[key][k]) : obj[key][k]
+      }
+    } else if (Array.isArray(obj[key])) {
       sanitized[key] = obj[key].map(item => typeof item === 'string' ? sanitizeText(item) : item)
     } else if (typeof obj[key] === 'string') {
       sanitized[key] = sanitizeText(obj[key])
@@ -231,6 +237,7 @@ ${newsContext || `Sin noticias indexadas en Polygon para este período. Usá tu 
 9. Tono: español neutro profesional pero accesible, sin jerga técnica excesiva.
 10. Preferí ser breve y preciso antes que extenso e inventado.
 11. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. No uses tu conocimiento previo para citar un P/E — puede estar desactualizado o ser incorrecto. Escribí "valuación no disponible" si no hay datos de P/E.
+12. what_to_do: las 3 frases deben ser coherentes con el veredicto del panel. Si es bajista, "entras" debe ser cauteloso, no optimista.
 
 ━━━ FORMATO DE RESPUESTA ━━━
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
@@ -239,6 +246,11 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
   "technical_summary": "2-3 oraciones sobre situación técnica actual. Mencionar cruce de medias, RSI y momentum. Si Death Cross, dejarlo claro.",
   "fundamental_summary": "2-3 oraciones sobre fundamentales y valuación usando SOLO los datos provistos. Si hay pocos datos, ser breve.",
   "analyst_summary": "2-3 oraciones integrando noticias recientes y contexto de mercado. Si hay earnings próximos, mencionarlos explícitamente.",
+  "what_to_do": {
+    "tienes": "Una oración concreta para quien ya tiene la acción: qué hacer con su posición ahora.",
+    "entras": "Una oración para quien está considerando entrar: si hay zona de entrada y en qué condición.",
+    "sales": "Una oración para quien considera salir: si tiene sentido salir y en qué nivel."
+  },
   "key_opportunity": "Una oración concreta y específica sobre la oportunidad principal.",
   "key_risk": "Una oración concreta y específica sobre el riesgo principal.",
   "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
@@ -251,7 +263,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 900,
+          max_tokens: 1200,
           messages: [{ role: 'user', content: promptText }],
         }),
       })
