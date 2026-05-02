@@ -12,13 +12,12 @@ function setCached(key, data) {
   cache.set(key, { data, ts: Date.now() })
 }
 
-// Sanitiza output de Claude: quita cite tags, artefactos, y saltos raros
 function sanitizeText(text) {
   if (!text || typeof text !== 'string') return text
   return text
     .replace(/]*>/gi, '')
     .replace(/<\/antml:cite>/gi, '')
-    .replace(/<[^>]+>/g, '')           // cualquier otro tag HTML
+    .replace(/<[^>]+>/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
 }
@@ -38,7 +37,6 @@ function sanitizeNarrative(obj) {
   return sanitized
 }
 
-// Valida que la narrativa no contradiga el panel — Fix #2
 function validateNarrative(narrative, panelData) {
   const issues = []
   const tech = (narrative.technical_summary || '').toLowerCase()
@@ -48,43 +46,35 @@ function validateNarrative(narrative, panelData) {
 
   const { cruceMA, rsi, position52w, score, trend } = panelData
 
-  // Caso 1: Death Cross — narrativa NO puede decir "alcista de largo plazo"
   if (cruceMA === 'Death Cross') {
     const alcistaPhrases = ['alcista de largo plazo', 'tendencia alcista de largo', 'long-term bullish', 'tendencia positiva de largo']
-    const hasContradiccion = alcistaPhrases.some(p => allText.includes(p))
-    if (hasContradiccion) {
+    if (alcistaPhrases.some(p => allText.includes(p))) {
       issues.push(`Death Cross activo pero la narrativa describe tendencia alcista de largo plazo`)
     }
   }
 
-  // Caso 2: Tendencia bajista (score <= 35) — narrativa NO puede tener tono optimista sin contexto
   if (trend === 'Tendencia bajista') {
     const optimistaPhrases = ['señal de compra', 'excelente momento para comprar', 'fuerte oportunidad de compra']
-    const hasContradiccion = optimistaPhrases.some(p => allText.includes(p))
-    if (hasContradiccion) {
+    if (optimistaPhrases.some(p => allText.includes(p))) {
       issues.push(`Panel bajista pero narrativa tiene tono de compra`)
     }
   }
 
-  // Caso 3: RSI > 70 — narrativa DEBE mencionar riesgo de corrección
   if (rsi != null && rsi > 70) {
-    const mentionsRisk = allText.includes('sobrecompra') || allText.includes('corrección') || 
+    const mentionsRisk = allText.includes('sobrecompra') || allText.includes('corrección') ||
                          allText.includes('rsi') || allText.includes('sobrecomprado')
     if (!mentionsRisk) {
       issues.push(`RSI ${rsi} (sobrecompra) no se menciona en la narrativa`)
     }
   }
 
-  // Caso 4: Precio en zona baja 52W (< 25%) — narrativa NO puede decir "cerca de máximos" o "fortaleza"
   if (position52w != null && position52w < 25) {
     const strengthPhrases = ['cerca de máximos', 'fortaleza técnica', 'máximos históricos']
-    const hasContradiccion = strengthPhrases.some(p => allText.includes(p))
-    if (hasContradiccion) {
+    if (strengthPhrases.some(p => allText.includes(p))) {
       issues.push(`Precio en ${position52w}% del rango 52W pero narrativa menciona fortaleza o máximos`)
     }
   }
 
-  // Caso 5: MACD vs momentum — si MACD bajista, no puede haber "momentum positivo" o "impulso alcista"
   const { macd: macdVal, macdSignal: macdSigVal } = panelData
   if (macdVal != null && macdSigVal != null) {
     const macdBearish = macdVal < macdSigVal
@@ -92,17 +82,16 @@ function validateNarrative(narrative, panelData) {
     const bullishMomentumPhrases = ['momentum positivo', 'impulso alcista', 'momentum alcista', 'impulso positivo', 'momentum favorable']
     const bearishMomentumPhrases = ['presión bajista', 'momentum negativo', 'impulso bajista', 'presión vendedora', 'momentum desfavorable']
     if (macdBearish && bullishMomentumPhrases.some(p => allText.includes(p))) {
-      issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo o impulso alcista`)
+      issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo`)
     }
     if (macdBullish && bearishMomentumPhrases.some(p => allText.includes(p))) {
-      issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista o momentum negativo`)
+      issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista`)
     }
   }
 
   return issues
 }
 
-// Construye el contexto del panel para pasar al prompt de reintentos
 function buildPanelContext(panelData) {
   const { cruceMA, rsi, position52w, trend, signal, score } = panelData
   const parts = []
@@ -124,13 +113,9 @@ export async function POST(request) {
     const {
       ticker, companyName, sector, news,
       price, priceChangeToday, high, low,
-      // Técnicos
       ma50, ma200, rsi, macd, macdSignal, relVol, change1m, high52, low52,
-      // Fundamentales desde Polygon (Fix #1)
       fundamentals,
-      // Earnings
       nextEarningsDate, nextEarningsDays,
-      // Veredicto del panel para validación (Fix #2)
       panelData,
     } = data
 
@@ -144,7 +129,6 @@ export async function POST(request) {
 
     const today = new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
-    // Construir contexto de noticias con ventana explícita de 7 días
     const newsContext = news?.length
       ? news.map(n => {
           const pub = n.published ? n.published.split('T')[0] : ''
@@ -152,7 +136,6 @@ export async function POST(request) {
         }).join('\n')
       : null
 
-    // Construir contexto técnico
     const ma50str  = ma50  != null ? `$${ma50}`  : 'N/D'
     const ma200str = ma200 != null ? `$${ma200}` : 'N/D'
     const cruceMA  = (ma50 != null && ma200 != null) ? (ma50 > ma200 ? 'Golden Cross (MA50 > MA200)' : 'Death Cross (MA50 < MA200)') : 'N/D'
@@ -165,24 +148,25 @@ export async function POST(request) {
     const pos52wStr = pos52w != null ? `${pos52w}%` : 'N/D'
     const change1mStr = change1m != null ? `${change1m > 0 ? '+' : ''}${change1m}%` : 'N/D'
 
-    // Construir contexto de fundamentales (solo mostrar lo que tenemos de Polygon)
     const fund = fundamentals || {}
-    // P/E > 500 es una distorsión contable (ganancias casi cero), no una métrica útil para el inversor
     const peDisplay = fund.pe != null
       ? (fund.pe > 500 ? `P/E (TTM): no significativo (ganancias muy reducidas vs precio)` : `P/E (TTM): ${fund.pe}`)
       : null
     const fundContext = [
       peDisplay,
-      fund.epsGrowth!= null ? `Crecimiento EPS: ${fund.epsGrowth > 0 ? '+' : ''}${fund.epsGrowth}%` : null,
-      fund.netMargin!= null ? `Margen neto: ${fund.netMargin}%` : null,
-      fund.roe      != null ? `ROE: ${fund.roe}%` : null,
-      fund.de       != null ? `D/E: ${fund.de}` : null,
+      fund.epsGrowth != null ? `Crecimiento EPS: ${fund.epsGrowth > 0 ? '+' : ''}${fund.epsGrowth}%` : null,
+      fund.netMargin != null ? `Margen neto: ${fund.netMargin}%` : null,
+      fund.roe       != null ? `ROE: ${fund.roe}%` : null,
+      fund.de        != null ? `D/E: ${fund.de}` : null,
     ].filter(Boolean).join(' · ') || 'No disponible desde Polygon en este ticker'
 
     // Construir contexto de earnings
+    const earningsContext = nextEarningsDate
+      ? nextEarningsDays != null && nextEarningsDays <= 14
+        ? `⚠️ PRÓXIMO EARNINGS: ${nextEarningsDate} (en ${nextEarningsDays} días) — MENCIONAR OBLIGATORIAMENTE en analyst_summary.`
+        : `Próximo earnings: ${nextEarningsDate}${nextEarningsDays != null ? ` (en ${nextEarningsDays} días)` : ''}.`
+      : null
 
-
-    // Veredicto del panel para reglas de coherencia
     const panelVeredicto = panelData
       ? `VEREDICTO DEL PANEL: ${panelData.trend} — ${panelData.signal} (score ${panelData.score}%)`
       : ''
@@ -235,7 +219,6 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
   "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
 }`
 
-    // Función interna para llamar a Claude
     async function callClaude(promptText) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -257,29 +240,23 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
       return JSON.parse(raw.slice(s, e + 1))
     }
 
-    // Primera llamada
     let parsed = await callClaude(prompt)
 
-    // Validación cruzada panel ↔ narrativa — Fix #2
     if (panelData) {
       const cruceForValidation = ma50 != null && ma200 != null ? (ma50 > ma200 ? 'Golden Cross' : 'Death Cross') : null
       const validationInput = {
         cruceMA: cruceForValidation,
-        rsi: rsi,
-        position52w: pos52w,
+        rsi, position52w: pos52w,
         trend: panelData.trend,
         signal: panelData.signal,
         score: panelData.score,
-        macd: macd,
-        macdSignal: macdSignal,
+        macd, macdSignal,
       }
       const issues = validateNarrative(parsed, validationInput)
 
       if (issues.length > 0) {
         console.warn(`[narrative] Validación fallida para ${ticker}:`, issues)
         const firstResponse = parsed
-
-        // Reintento con contexto del conflicto
         const retryPrompt = `${prompt}
 
 ━━━ CORRECCIÓN NECESARIA ━━━
@@ -299,14 +276,11 @@ Reescribí la narrativa corrigiendo estas contradicciones. La narrativa DEBE ser
           }
         } catch (retryErr) {
           console.error(`[narrative] Error en reintento para ${ticker}:`, retryErr.message)
-          // Mantener primera respuesta si el reintento falla
         }
       }
     }
 
-    // Sanitizar tags cite y artefactos — Fix cite tags
     const sanitized = sanitizeNarrative(parsed)
-
     setCached(cacheKey, sanitized)
     return Response.json(sanitized)
 
