@@ -180,16 +180,7 @@ export async function POST(request) {
     ].filter(Boolean).join(' · ') || 'No disponible desde Polygon en este ticker'
 
     // Construir contexto de earnings
-    let earningsContext = ''
-    if (nextEarningsDate) {
-      if (nextEarningsDays != null && nextEarningsDays >= 0 && nextEarningsDays <= 14) {
-        earningsContext = `⚠️ PRÓXIMO EARNINGS: ${nextEarningsDate} (en ${nextEarningsDays} días) — MENCIONAR OBLIGATORIAMENTE en analyst_summary`
-      } else if (nextEarningsDays != null && nextEarningsDays < 0 && nextEarningsDays >= -7) {
-        earningsContext = `Reportó recientemente: ${nextEarningsDate} (hace ${Math.abs(nextEarningsDays)} días) — mencionar si hay datos relevantes`
-      } else if (nextEarningsDate) {
-        earningsContext = `Próximo earnings: ${nextEarningsDate}`
-      }
-    }
+
 
     // Veredicto del panel para reglas de coherencia
     const panelVeredicto = panelData
@@ -212,12 +203,12 @@ Momentum 1 mes: ${change1mStr}
 ${fundContext}
 
 ━━━ CALENDARIO ━━━
-${earningsContext || 'Sin datos de earnings disponibles. Usá tu conocimiento actualizado: ¿cuándo reporta ${ticker} sus próximos resultados? ¿Reportó recientemente (últimas 4 semanas)? Si reportó recientemente, mencioná EPS real vs estimado. Si el próximo earnings es en menos de 14 días, es OBLIGATORIO mencionarlo en analyst_summary como catalizador clave. Si no tenés certeza de la fecha exacta, indicá el mes aproximado.'}
+${earningsContext || `Sin datos de earnings disponibles. Usá tu conocimiento actualizado: ¿cuándo reporta ${ticker} sus próximos resultados? ¿Reportó recientemente (últimas 4 semanas)? Si reportó recientemente, mencioná EPS real vs estimado. Si el próximo earnings es en menos de 14 días, es OBLIGATORIO mencionarlo en analyst_summary como catalizador clave. Si no tenés certeza de la fecha exacta, indicá el mes aproximado.`}
 
 ${panelVeredicto}
 
 ━━━ NOTICIAS ÚLTIMOS 7-30 DÍAS (fuente: Polygon) ━━━
-${newsContext || 'Sin noticias indexadas en Polygon para este período. Usá tu conocimiento para mencionar upgrades/downgrades de analistas o noticias corporativas relevantes de las últimas 4 semanas para ${ticker}.'}
+${newsContext || `Sin noticias indexadas en Polygon para este período. Usá tu conocimiento para mencionar upgrades/downgrades de analistas o noticias corporativas relevantes de las últimas 4 semanas para ${ticker}.`}
 
 ━━━ REGLAS CRÍTICAS — LEER ANTES DE RESPONDER ━━━
 1. NUNCA inventes números. Solo podés citar cifras que estén explícitamente en los datos de arriba.
@@ -286,6 +277,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
 
       if (issues.length > 0) {
         console.warn(`[narrative] Validación fallida para ${ticker}:`, issues)
+        const firstResponse = parsed
 
         // Reintento con contexto del conflicto
         const retryPrompt = `${prompt}
@@ -302,17 +294,8 @@ Reescribí la narrativa corrigiendo estas contradicciones. La narrativa DEBE ser
           parsed = await callClaude(retryPrompt)
           const issuesRetry = validateNarrative(parsed, validationInput)
           if (issuesRetry.length > 0) {
-            console.warn(`[narrative] Segundo intento también falló para ${ticker}:`, issuesRetry)
-            // Safe mode: narrative mínima basada solo en datos duros
-            parsed = {
-              technical_summary: `${ticker} cotiza a $${price ?? 'N/D'}. ${cruceForValidation ? cruceForValidation + ' activo.' : ''} RSI en ${rsi ?? 'N/D'}${rsi > 70 ? ' (zona de sobrecompra)' : rsi < 30 ? ' (zona de sobrevendido)' : ''}. Momentum 1 mes: ${change1mStr}.`,
-              fundamental_summary: fundContext !== 'No disponible desde Polygon en este ticker' ? `Datos fundamentales: ${fundContext}.` : 'Datos fundamentales no disponibles desde la fuente.',
-              analyst_summary: newsContext ? `Noticias recientes: ${news[0]?.title || 'Ver fuentes externas para más contexto'}.${earningsContext ? ' ' + earningsContext : ''}` : `Sin noticias indexadas en el período reciente.${earningsContext ? ' ' + earningsContext : ''}`,
-              key_opportunity: 'Revisar el análisis técnico y fundamental completo antes de tomar decisiones.',
-              key_risk: `${panelData.trend} — verificar los indicadores del panel antes de operar.`,
-              analysts_consensus: 'Mantener',
-            }
-            console.warn(`[narrative] Safe mode activado para ${ticker}`)
+            console.warn(`[narrative] Segundo intento también falló para ${ticker} — usando primera respuesta:`, issuesRetry)
+            parsed = firstResponse
           }
         } catch (retryErr) {
           console.error(`[narrative] Error en reintento para ${ticker}:`, retryErr.message)
