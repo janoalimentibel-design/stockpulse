@@ -238,6 +238,7 @@ ${newsContext || `Sin noticias indexadas en Polygon para este período. Usá tu 
 10. Preferí ser breve y preciso antes que extenso e inventado.
 11. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. No uses tu conocimiento previo para citar un P/E — puede estar desactualizado o ser incorrecto. Escribí "valuación no disponible" si no hay datos de P/E.
 12. what_to_do: las 3 frases deben ser coherentes con el veredicto del panel. Si es bajista, "entras" debe ser cauteloso, no optimista.
+13. what_to_do: usar siempre lenguaje sugerente, jamás imperativo. Usá "considerá", "evaluá", "esperá", "podrías" — NUNCA "debés", "tenés que", "hay que". Todo el texto en español neutro sin palabras en inglés.
 
 ━━━ FORMATO DE RESPUESTA ━━━
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
