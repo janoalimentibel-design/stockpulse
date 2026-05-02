@@ -6,7 +6,7 @@ const RANGES = ['1D', '1M', '6M', '1A', '5A', 'MAX']
 export default function PriceChart({ ticker }) {
   const canvasRef  = useRef(null)
   const wrapperRef = useRef(null)
-  const abortRef   = useRef(null) // cancela fetch anterior al cambiar rango
+  const abortRef   = useRef(null)
   const [range, setRange]       = useState('1M')
   const [points, setPoints]     = useState([])
   const [loading, setLoading]   = useState(false)
@@ -14,11 +14,10 @@ export default function PriceChart({ ticker }) {
   const [change, setChange]     = useState(null)
   const [hover, setHover]       = useState(null)
   const [needsPro, setNeedsPro] = useState(false)
+  const [hasData, setHasData]   = useState(false) // solo true cuando llegan datos reales
 
   useEffect(() => {
     if (!ticker) return
-
-    // cancelar fetch anterior si sigue en vuelo
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -35,18 +34,21 @@ export default function PriceChart({ ticker }) {
     })
       .then(r => r.json())
       .then(d => {
-        if (d.needsPro) { setNeedsPro(true); setPoints([]); setChange(null); return }
-        if (d.error)    { setError(d.error); setPoints([]); setChange(null); return }
+        if (d.needsPro) { setNeedsPro(true); setPoints([]); setChange(null); setHasData(false); return }
+        if (d.error)    { setError(d.error); setPoints([]); setChange(null); setHasData(false); return }
         setNeedsPro(false)
         setError('')
-        setPoints(d.points || [])
+        const pts = d.points || []
+        setPoints(pts)
         setChange(d.change)
+        setHasData(pts.length >= 2)
       })
       .catch(err => {
-        if (err.name === 'AbortError') return // fetch cancelado — ignorar
+        if (err.name === 'AbortError') return
         setError('Error cargando historial.')
         setPoints([])
         setChange(null)
+        setHasData(false)
       })
       .finally(() => setLoading(false))
   }, [ticker, range])
@@ -69,7 +71,6 @@ export default function PriceChart({ ticker }) {
     const H   = wrapper.offsetHeight
     if (W === 0 || H === 0) return
 
-    // forzar dimensiones explícitas para evitar canvas desincronizado entre renders
     canvas.width        = W * dpr
     canvas.height       = H * dpr
     canvas.style.width  = W + 'px'
@@ -97,7 +98,6 @@ export default function PriceChart({ ticker }) {
 
     ctx.clearRect(0, 0, W, H)
 
-    // Línea base
     const baseY = yOf(prices[0])
     ctx.beginPath()
     ctx.setLineDash([3, 5])
@@ -108,7 +108,6 @@ export default function PriceChart({ ticker }) {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Área
     const grad = ctx.createLinearGradient(0, padT, 0, padT + chartH)
     grad.addColorStop(0, isUp ? 'rgba(78,187,121,0.14)' : 'rgba(224,80,80,0.14)')
     grad.addColorStop(1, 'rgba(0,0,0,0)')
@@ -126,7 +125,6 @@ export default function PriceChart({ ticker }) {
     ctx.fillStyle = grad
     ctx.fill()
 
-    // Línea
     ctx.beginPath()
     ctx.moveTo(xOf(0), yOf(prices[0]))
     for (let i = 1; i < points.length; i++) {
@@ -139,7 +137,6 @@ export default function PriceChart({ ticker }) {
     ctx.lineWidth = 1.5
     ctx.stroke()
 
-    // Labels X
     const step = Math.max(1, Math.floor(points.length / 5))
     ctx.fillStyle = '#484c5a'
     ctx.font = '10px DM Mono, monospace'
@@ -148,7 +145,6 @@ export default function PriceChart({ ticker }) {
       ctx.fillText(formatLabel(points[i].t), xOf(i), H - 4)
     }
 
-    // Crosshair
     if (hover !== null && hover.idx >= 0 && hover.idx < points.length) {
       const cx = xOf(hover.idx)
       const cy = yOf(prices[hover.idx])
@@ -196,7 +192,6 @@ export default function PriceChart({ ticker }) {
     <div className="rounded-xl mb-4 overflow-hidden"
       style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
 
-      {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-wrap gap-2">
         <div style={{ minHeight: 22 }}>
           {active ? (
@@ -225,7 +220,6 @@ export default function PriceChart({ ticker }) {
           )}
         </div>
 
-        {/* Selector de rango */}
         <div className="flex gap-1">
           {RANGES.map(r => (
             <button key={r} onClick={() => setRange(r)}
@@ -235,8 +229,7 @@ export default function PriceChart({ ticker }) {
                 borderColor: range === r ? 'var(--accent)' : 'transparent',
                 background:  range === r ? 'var(--accent-bg)' : 'transparent',
                 color: range === r ? 'var(--accent)' : 'var(--text3)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
+                cursor: 'pointer', transition: 'all 0.15s',
                 opacity: (r === '5A' || r === 'MAX') ? 0.5 : 1,
               }}>
               {r}
@@ -245,7 +238,6 @@ export default function PriceChart({ ticker }) {
         </div>
       </div>
 
-      {/* Canvas */}
       <div ref={wrapperRef}
         style={{ position: 'relative', width: '100%', height: 160, cursor: 'crosshair' }}
         onMouseMove={handleMouseMove}
@@ -260,13 +252,15 @@ export default function PriceChart({ ticker }) {
             <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
           </div>
         )}
-        {!loading && needsPro && (
+
+        {/* Solo mostrar estos estados cuando NO hay datos reales — evita overlay sobre canvas con línea */}
+        {!loading && !hasData && needsPro && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <span style={{ fontSize: 13, color: 'var(--text3)' }}>Historial extendido no disponible aún</span>
             <span style={{ fontSize: 11, color: 'var(--text3)', opacity: 0.6 }}>Probá con 1A o menos</span>
           </div>
         )}
-        {!loading && !needsPro && points.length === 0 && !error && (
+        {!loading && !hasData && !needsPro && !error && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontSize: 12, color: 'var(--text3)' }}>Sin datos disponibles</span>
           </div>
@@ -275,7 +269,6 @@ export default function PriceChart({ ticker }) {
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       </div>
 
-      {/* Métricas */}
       {displayPoint && (
         <div className="grid grid-cols-4" style={{ borderTop: '0.5px solid var(--border)' }}>
           {[
