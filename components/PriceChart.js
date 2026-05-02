@@ -6,44 +6,44 @@ const RANGES = ['1D', '1M', '6M', '1A', '5A', 'MAX']
 export default function PriceChart({ ticker }) {
   const canvasRef  = useRef(null)
   const wrapperRef = useRef(null)
-  const [range, setRange]     = useState('1M')
-  const [points, setPoints]   = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
-  const [change, setChange]   = useState(null)
-  const [hover, setHover]     = useState(null)
+  const abortRef   = useRef(null) // cancela fetch anterior al cambiar rango
+  const [range, setRange]       = useState('1M')
+  const [points, setPoints]     = useState([])
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [change, setChange]     = useState(null)
+  const [hover, setHover]       = useState(null)
   const [needsPro, setNeedsPro] = useState(false)
 
   useEffect(() => {
     if (!ticker) return
+
+    // cancelar fetch anterior si sigue en vuelo
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setLoading(true)
     setError('')
     setHover(null)
-    // NO limpiar points/change aquí — el canvas muestra datos anteriores mientras carga
+
     fetch('/api/price-history', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticker, range }),
+      signal: controller.signal,
     })
       .then(r => r.json())
       .then(d => {
-        if (d.needsPro) {
-          setNeedsPro(true)
-          setPoints([])
-          setChange(null)
-          return
-        }
-        if (d.error) {
-          setError(d.error)
-          setPoints([])
-          setChange(null)
-          return
-        }
+        if (d.needsPro) { setNeedsPro(true); setPoints([]); setChange(null); return }
+        if (d.error)    { setError(d.error); setPoints([]); setChange(null); return }
         setNeedsPro(false)
+        setError('')
         setPoints(d.points || [])
         setChange(d.change)
       })
-      .catch(() => {
+      .catch(err => {
+        if (err.name === 'AbortError') return // fetch cancelado — ignorar
         setError('Error cargando historial.')
         setPoints([])
         setChange(null)
@@ -60,13 +60,21 @@ export default function PriceChart({ ticker }) {
   }
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || points.length < 2) return
+    const canvas  = canvasRef.current
+    const wrapper = wrapperRef.current
+    if (!canvas || !wrapper || points.length < 2) return
+
     const dpr = window.devicePixelRatio || 1
-    const W = canvas.offsetWidth
-    const H = canvas.offsetHeight
-    canvas.width  = W * dpr
-    canvas.height = H * dpr
+    const W   = wrapper.offsetWidth
+    const H   = wrapper.offsetHeight
+    if (W === 0 || H === 0) return
+
+    // forzar dimensiones explícitas para evitar canvas desincronizado entre renders
+    canvas.width        = W * dpr
+    canvas.height       = H * dpr
+    canvas.style.width  = W + 'px'
+    canvas.style.height = H + 'px'
+
     const ctx = canvas.getContext('2d')
     ctx.scale(dpr, dpr)
 
@@ -164,21 +172,25 @@ export default function PriceChart({ ticker }) {
 
   const handleMouseMove = useCallback((e) => {
     if (!wrapperRef.current || points.length < 2) return
-    const rect   = wrapperRef.current.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const idx    = Math.round((mouseX / rect.width) * (points.length - 1))
+    const rect    = wrapperRef.current.getBoundingClientRect()
+    const mouseX  = e.clientX - rect.left
+    const idx     = Math.round((mouseX / rect.width) * (points.length - 1))
     const clamped = Math.max(0, Math.min(points.length - 1, idx))
-    const p = points[clamped]
+    const p   = points[clamped]
     const pct = ((p.c - points[0].c) / points[0].c * 100).toFixed(2)
     setHover({ idx: clamped, price: p.c, label: formatLabel(p.t), pct: parseFloat(pct), o: p.o, h: p.h, l: p.l, v: p.v })
   }, [points, range])
 
   const handleMouseLeave = useCallback(() => setHover(null), [])
 
-  const isUp   = change !== null ? change >= 0 : true
-  const active = hover || null
+  const isUp         = change !== null ? change >= 0 : true
+  const active       = hover || null
   const lastPoint    = points.length > 0 ? points[points.length - 1] : null
-  const displayPoint = active ? active : lastPoint ? { price: lastPoint.c, o: lastPoint.o, h: lastPoint.h, l: lastPoint.l, v: lastPoint.v, pct: change } : null
+  const displayPoint = active
+    ? active
+    : lastPoint
+      ? { price: lastPoint.c, o: lastPoint.o, h: lastPoint.h, l: lastPoint.l, v: lastPoint.v, pct: change }
+      : null
 
   return (
     <div className="rounded-xl mb-4 overflow-hidden"
@@ -200,16 +212,14 @@ export default function PriceChart({ ticker }) {
           ) : (
             <div className="flex items-center gap-2">
               {loading && <span className="text-xs" style={{ color: 'var(--text3)' }}>Cargando...</span>}
-              {!loading && change !== null && (
+              {!loading && change !== null && !error && (
                 <span className="text-xs font-medium" style={{ color: isUp ? '#4ebb79' : '#e05050' }}>
                   {isUp ? '+' : ''}{change}% en este período
                 </span>
               )}
               {!loading && error && <span className="text-xs" style={{ color: 'var(--red)' }}>{error}</span>}
               {!loading && needsPro && (
-                <span className="text-xs" style={{ color: 'var(--text3)' }}>
-                  Historial extendido próximamente
-                </span>
+                <span className="text-xs" style={{ color: 'var(--text3)' }}>Historial extendido próximamente</span>
               )}
             </div>
           )}
@@ -224,9 +234,7 @@ export default function PriceChart({ ticker }) {
                 border: '0.5px solid',
                 borderColor: range === r ? 'var(--accent)' : 'transparent',
                 background:  range === r ? 'var(--accent-bg)' : 'transparent',
-                color: (r === '5A' || r === 'MAX')
-                  ? (range === r ? 'var(--accent)' : 'var(--text3)')
-                  : (range === r ? 'var(--accent)' : 'var(--text3)'),
+                color: range === r ? 'var(--accent)' : 'var(--text3)',
                 cursor: 'pointer',
                 transition: 'all 0.15s',
                 opacity: (r === '5A' || r === 'MAX') ? 0.5 : 1,
@@ -243,12 +251,11 @@ export default function PriceChart({ ticker }) {
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}>
 
-        {/* Overlay de loading sobre el canvas — no borra los puntos anteriores */}
         {loading && (
           <div style={{
-            position: 'absolute', inset: 0,
+            position: 'absolute', inset: 0, zIndex: 2,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(11,13,18,0.55)', zIndex: 2,
+            background: 'rgba(11,13,18,0.55)',
           }}>
             <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
           </div>
@@ -264,6 +271,7 @@ export default function PriceChart({ ticker }) {
             <span style={{ fontSize: 12, color: 'var(--text3)' }}>Sin datos disponibles</span>
           </div>
         )}
+
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       </div>
 
@@ -276,10 +284,7 @@ export default function PriceChart({ ticker }) {
             { label: 'Mínimo',   val: displayPoint.l ? `$${Number(displayPoint.l).toFixed(2)}` : 'N/D', color: '#e05050'     },
             { label: 'Volumen',  val: displayPoint.v ? formatVol(displayPoint.v) : 'N/D',               color: 'var(--text)' },
           ].map((m, i) => (
-            <div key={i} style={{
-              padding: '10px 16px',
-              borderRight: i < 3 ? '0.5px solid var(--border)' : 'none',
-            }}>
+            <div key={i} style={{ padding: '10px 16px', borderRight: i < 3 ? '0.5px solid var(--border)' : 'none' }}>
               <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{m.label}</div>
               <div style={{ fontSize: 12, fontWeight: 500, color: m.color, fontFamily: 'DM Mono, monospace' }}>{m.val}</div>
             </div>
