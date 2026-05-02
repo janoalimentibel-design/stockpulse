@@ -1,15 +1,33 @@
 // app/api/narrative/route.js
-const cache = new Map()
-const CACHE_TTL = 4 * 60 * 60 * 1000
+import { supabase } from '@/lib/supabase'
 
-function getCached(key) {
-  const entry = cache.get(key)
-  if (!entry) return null
-  if (Date.now() - entry.ts > CACHE_TTL) { cache.delete(key); return null }
-  return entry.data
+const CACHE_TTL_HOURS = 4
+
+async function getCached(ticker) {
+  try {
+    const { data, error } = await supabase
+      .from('narrative_cache')
+      .select('data, created_at')
+      .eq('ticker', ticker)
+      .single()
+    if (error || !data) return null
+    const ageHours = (Date.now() - new Date(data.created_at).getTime()) / (1000 * 60 * 60)
+    if (ageHours > CACHE_TTL_HOURS) {
+      await supabase.from('narrative_cache').delete().eq('ticker', ticker)
+      return null
+    }
+    return data.data
+  } catch {
+    return null
+  }
 }
-function setCached(key, data) {
-  cache.set(key, { data, ts: Date.now() })
+
+async function setCached(ticker, payload) {
+  try {
+    await supabase.from('narrative_cache').upsert({ ticker, data: payload, created_at: new Date().toISOString() })
+  } catch (e) {
+    console.error('[narrative] Error guardando caché Supabase:', e.message)
+  }
 }
 
 // Sanitiza output de Claude: quita cite tags, artefactos, y saltos raros
@@ -27,13 +45,7 @@ function sanitizeNarrative(obj) {
   if (!obj || typeof obj !== 'object') return obj
   const sanitized = {}
   for (const key of Object.keys(obj)) {
-    if (key === 'what_to_do' && obj[key] && typeof obj[key] === 'object') {
-      // what_to_do es un objeto anidado — sanitizar sus valores string
-      sanitized[key] = {}
-      for (const k of Object.keys(obj[key])) {
-        sanitized[key][k] = typeof obj[key][k] === 'string' ? sanitizeText(obj[key][k]) : obj[key][k]
-      }
-    } else if (Array.isArray(obj[key])) {
+    if (Array.isArray(obj[key])) {
       sanitized[key] = obj[key].map(item => typeof item === 'string' ? sanitizeText(item) : item)
     } else if (typeof obj[key] === 'string') {
       sanitized[key] = sanitizeText(obj[key])
@@ -141,9 +153,9 @@ export async function POST(request) {
     } = data
 
     const cacheKey = ticker?.toUpperCase()
-    const cached = getCached(cacheKey)
+    const cached = await getCached(cacheKey)
     if (cached) {
-      console.log(`[narrative] Cache HIT: ${cacheKey}`)
+      console.log(`[narrative] Cache HIT (Supabase): ${cacheKey}`)
       return Response.json(cached)
     }
     console.log(`[narrative] Cache MISS: ${cacheKey} — llamando a Claude`)
@@ -237,8 +249,6 @@ ${newsContext || `Sin noticias indexadas en Polygon para este período. Usá tu 
 9. Tono: español neutro profesional pero accesible, sin jerga técnica excesiva.
 10. Preferí ser breve y preciso antes que extenso e inventado.
 11. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. No uses tu conocimiento previo para citar un P/E — puede estar desactualizado o ser incorrecto. Escribí "valuación no disponible" si no hay datos de P/E.
-12. what_to_do: las 3 frases deben ser coherentes con el veredicto del panel. Si es bajista, "entras" debe ser cauteloso, no optimista.
-13. what_to_do: usar siempre lenguaje sugerente, jamás imperativo. Usá "considerá", "evaluá", "esperá", "podrías" — NUNCA "debés", "tenés que", "hay que". Todo el texto en español neutro sin palabras en inglés.
 
 ━━━ FORMATO DE RESPUESTA ━━━
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
@@ -247,11 +257,6 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
   "technical_summary": "2-3 oraciones sobre situación técnica actual. Mencionar cruce de medias, RSI y momentum. Si Death Cross, dejarlo claro.",
   "fundamental_summary": "2-3 oraciones sobre fundamentales y valuación usando SOLO los datos provistos. Si hay pocos datos, ser breve.",
   "analyst_summary": "2-3 oraciones integrando noticias recientes y contexto de mercado. Si hay earnings próximos, mencionarlos explícitamente.",
-  "what_to_do": {
-    "tienes": "Una oración concreta para quien ya tiene la acción: qué hacer con su posición ahora.",
-    "entras": "Una oración para quien está considerando entrar: si hay zona de entrada y en qué condición.",
-    "sales": "Una oración para quien considera salir: si tiene sentido salir y en qué nivel."
-  },
   "key_opportunity": "Una oración concreta y específica sobre la oportunidad principal.",
   "key_risk": "Una oración concreta y específica sobre el riesgo principal.",
   "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
@@ -264,7 +269,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 1200,
+          max_tokens: 900,
           messages: [{ role: 'user', content: promptText }],
         }),
       })
@@ -329,7 +334,7 @@ Reescribí la narrativa corrigiendo estas contradicciones. La narrativa DEBE ser
     // Sanitizar tags cite y artefactos — Fix cite tags
     const sanitized = sanitizeNarrative(parsed)
 
-    setCached(cacheKey, sanitized)
+    await setCached(cacheKey, sanitized)
     return Response.json(sanitized)
 
   } catch (err) {
