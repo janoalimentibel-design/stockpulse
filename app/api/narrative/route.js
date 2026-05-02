@@ -84,6 +84,21 @@ function validateNarrative(narrative, panelData) {
     }
   }
 
+  // Caso 5: MACD vs momentum — si MACD bajista, no puede haber "momentum positivo" o "impulso alcista"
+  const { macd: macdVal, macdSignal: macdSigVal } = panelData
+  if (macdVal != null && macdSigVal != null) {
+    const macdBearish = macdVal < macdSigVal
+    const macdBullish = macdVal > macdSigVal
+    const bullishMomentumPhrases = ['momentum positivo', 'impulso alcista', 'momentum alcista', 'impulso positivo', 'momentum favorable']
+    const bearishMomentumPhrases = ['presión bajista', 'momentum negativo', 'impulso bajista', 'presión vendedora', 'momentum desfavorable']
+    if (macdBearish && bullishMomentumPhrases.some(p => allText.includes(p))) {
+      issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo o impulso alcista`)
+    }
+    if (macdBullish && bearishMomentumPhrases.some(p => allText.includes(p))) {
+      issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista o momentum negativo`)
+    }
+  }
+
   return issues
 }
 
@@ -211,6 +226,7 @@ ${newsContext || 'Sin noticias indexadas en Polygon para este período. Usá tu 
 8. Para noticias: si no hay en 7 días, buscá en el período disponible. Nunca escribas "sin noticias específicas hoy" — si no encontrás nada, decí "Sin catalizadores específicos en las últimas semanas."
 9. Tono: español neutro profesional pero accesible, sin jerga técnica excesiva.
 10. Preferí ser breve y preciso antes que extenso e inventado.
+11. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. No uses tu conocimiento previo para citar un P/E — puede estar desactualizado o ser incorrecto. Escribí "valuación no disponible" si no hay datos de P/E.
 
 ━━━ FORMATO DE RESPUESTA ━━━
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
@@ -259,6 +275,8 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         trend: panelData.trend,
         signal: panelData.signal,
         score: panelData.score,
+        macd: macd,
+        macdSignal: macdSignal,
       }
       const issues = validateNarrative(parsed, validationInput)
 
