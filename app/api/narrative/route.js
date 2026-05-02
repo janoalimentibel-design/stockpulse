@@ -167,8 +167,12 @@ export async function POST(request) {
 
     // Construir contexto de fundamentales (solo mostrar lo que tenemos de Polygon)
     const fund = fundamentals || {}
+    // P/E > 500 es una distorsión contable (ganancias casi cero), no una métrica útil para el inversor
+    const peDisplay = fund.pe != null
+      ? (fund.pe > 500 ? `P/E (TTM): no significativo (ganancias muy reducidas vs precio)` : `P/E (TTM): ${fund.pe}`)
+      : null
     const fundContext = [
-      fund.pe       != null ? `P/E (TTM): ${fund.pe}` : null,
+      peDisplay,
       fund.epsGrowth!= null ? `Crecimiento EPS: ${fund.epsGrowth > 0 ? '+' : ''}${fund.epsGrowth}%` : null,
       fund.netMargin!= null ? `Margen neto: ${fund.netMargin}%` : null,
       fund.roe      != null ? `ROE: ${fund.roe}%` : null,
