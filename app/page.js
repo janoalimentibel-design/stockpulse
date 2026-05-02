@@ -82,10 +82,12 @@ export default function Home() {
           data: {
             ...md,
             panelData: {
-              trend:     prelimResult.trend,
-              signal:    prelimResult.signal,
-              score:     prelimResult.score,
-              sentiment: prelimResult.sentiment,
+              trend:      prelimResult.trend,
+              signal:     prelimResult.signal,
+              score:      prelimResult.score,
+              sentiment:  prelimResult.sentiment,
+              macd:       prelimResult.macd,
+              macdSignal: prelimResult.macdSignal,
             },
           },
         }),
