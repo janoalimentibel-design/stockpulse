@@ -259,7 +259,12 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
   "analyst_summary": "2-3 oraciones integrando noticias recientes y contexto de mercado. Si hay earnings próximos, mencionarlos explícitamente.",
   "key_opportunity": "Una oración concreta y específica sobre la oportunidad principal.",
   "key_risk": "Una oración concreta y específica sobre el riesgo principal.",
-  "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte"
+  "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte",
+  "what_to_do": {
+    "tienes": "Una oración para quien ya tiene la acción — ¿holdear, tomar ganancias parciales, agregar posición?",
+    "entras": "Una oración para quien quiere entrar — ¿esperar corrección, entrar en cuotas, esperar confirmación?",
+    "sales": "Una oración para quien considera salir — ¿cuándo sería el momento, qué señal mirar?"
+  }
 }`
 
     // Función interna para llamar a Claude
@@ -269,7 +274,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 900,
+          max_tokens: 1200,
           messages: [{ role: 'user', content: promptText }],
         }),
       })
