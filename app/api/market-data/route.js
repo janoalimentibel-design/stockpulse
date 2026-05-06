@@ -1,4 +1,5 @@
 // app/api/market-data/route.js
+import { validateTicker } from '@/lib/validate'
 
 function calcMA(closes, period) {
   if (!closes || closes.length < period) return null
@@ -57,7 +58,6 @@ function calcChange1M(closes) {
   return Math.round(((current - monthAgo) / monthAgo) * 100 * 10) / 10
 }
 
-// FIX D/E — usa deuda financiera real, no total liabilities
 function calcFundamentals(financials, currentPrice) {
   try {
     const results = financials?.results
@@ -69,12 +69,11 @@ function calcFundamentals(financials, currentPrice) {
 
     if (!income || !balance) return null
 
-    const netIncome  = income?.net_income_loss?.value ?? null
-    const revenue    = income?.revenues?.value ?? null
-    const eps        = income?.basic_earnings_per_share?.value ?? null
+    const netIncome   = income?.net_income_loss?.value ?? null
+    const revenue     = income?.revenues?.value ?? null
+    const eps         = income?.basic_earnings_per_share?.value ?? null
     const totalEquity = balance?.equity?.value ?? null
 
-    // Deuda financiera: long term + current portion + short term (excluye pasivos operativos)
     const longTermDebt        = balance?.long_term_debt?.value ?? 0
     const currentLongTermDebt = balance?.current_portion_of_long_term_debt?.value ?? 0
     const shortTermDebt       = balance?.short_term_debt?.value ?? 0
@@ -118,14 +117,12 @@ function calcEarningsDays(earningsDate) {
   }
 }
 
-// FIX 5 — Finnhub earnings calendar
-// Devuelve { nextEarningsDate, lastEarningsDate, lastEarningsBeat }
-// lastEarningsBeat: true = beat, false = miss, null = sin datos
 async function fetchEarnings(ticker, finnhubKey) {
   if (!finnhubKey) return {}
 
-  const today     = new Date().toISOString().split('T')[0]
-  const in90days  = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  // ticker ya está validado antes de llegar aquí — solo [A-Z0-9.\-]
+  const today      = new Date().toISOString().split('T')[0]
+  const in90days   = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const ago180days = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   let nextEarningsDate = null
@@ -133,31 +130,26 @@ async function fetchEarnings(ticker, finnhubKey) {
   let lastEarningsBeat = null
 
   try {
-    // Próximo earnings — calendario hacia adelante
     const calRes = await fetch(
-      `https://finnhub.io/api/v1/calendar/earnings?symbol=${ticker}&from=${today}&to=${in90days}&token=${finnhubKey}`,
+      `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${today}&to=${in90days}&token=${finnhubKey}`,
       { headers: { 'X-Finnhub-Token': finnhubKey } }
     )
     if (calRes.ok) {
       const calData = await calRes.json()
       const upcoming = calData?.earningsCalendar
-      if (upcoming?.length) {
-        // El primero es el más próximo (están ordenados asc)
-        nextEarningsDate = upcoming[0].date
-      }
+      if (upcoming?.length) nextEarningsDate = upcoming[0].date
     }
   } catch {}
 
   try {
-    // Último earnings reportado — para beat/miss
     const histRes = await fetch(
-      `https://finnhub.io/api/v1/stock/earnings?symbol=${ticker}&limit=4&token=${finnhubKey}`,
+      `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(ticker)}&limit=4&token=${finnhubKey}`,
       { headers: { 'X-Finnhub-Token': finnhubKey } }
     )
     if (histRes.ok) {
       const histData = await histRes.json()
       if (histData?.length) {
-        const last = histData[0] // más reciente primero
+        const last = histData[0]
         lastEarningsDate = last.period ?? null
         if (last.actual != null && last.estimate != null) {
           lastEarningsBeat = last.actual >= last.estimate
@@ -166,18 +158,16 @@ async function fetchEarnings(ticker, finnhubKey) {
     }
   } catch {}
 
-  // Si no encontramos próximo earnings en el futuro, buscar en el pasado reciente
   if (!nextEarningsDate) {
     try {
       const pastRes = await fetch(
-        `https://finnhub.io/api/v1/calendar/earnings?symbol=${ticker}&from=${ago180days}&to=${today}&token=${finnhubKey}`,
+        `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${ago180days}&to=${today}&token=${finnhubKey}`,
         { headers: { 'X-Finnhub-Token': finnhubKey } }
       )
       if (pastRes.ok) {
         const pastData = await pastRes.json()
         const pastEarnings = pastData?.earningsCalendar
         if (pastEarnings?.length) {
-          // El último reportado — usar como referencia de cuándo fue
           nextEarningsDate = pastEarnings[pastEarnings.length - 1].date
         }
       }
@@ -189,19 +179,20 @@ async function fetchEarnings(ticker, finnhubKey) {
 
 export async function POST(request) {
   try {
-    const { ticker } = await request.json()
-    if (!ticker) return Response.json({ error: 'Falta ticker.' }, { status: 400 })
+    const body = await request.json().catch(() => null)
 
-    const polygonKey  = process.env.POLYGON_API_KEY
-    const finnhubKey  = process.env.FINNHUB_API_KEY  // opcional — sin él, no hay earnings
-    if (!polygonKey) return Response.json({ error: 'Polygon API key no configurada en el servidor.' }, { status: 500 })
+    // Validar ticker: solo [A-Z0-9.\-], máximo 12 chars
+    const t = validateTicker(body?.ticker)
+    if (!t) return Response.json({ error: 'Ticker inválido.' }, { status: 400 })
 
-    const t = ticker.toUpperCase().trim()
+    const polygonKey = process.env.POLYGON_API_KEY
+    const finnhubKey = process.env.FINNHUB_API_KEY
+    if (!polygonKey) return Response.json({ error: 'Configuración del servidor incompleta.' }, { status: 500 })
 
-    // 1 — Datos de la empresa (Polygon)
+    // 1 — Datos de la empresa
     let companyName = t, sector = null
     try {
-      const detRes = await fetch(`https://api.polygon.io/v3/reference/tickers/${t}?apiKey=${polygonKey}`)
+      const detRes = await fetch(`https://api.polygon.io/v3/reference/tickers/${encodeURIComponent(t)}?apiKey=${polygonKey}`)
       const det = await detRes.json()
       companyName = det.results?.name || t
       sector = det.results?.sic_description || null
@@ -211,7 +202,7 @@ export async function POST(request) {
     let price = null, priceChangeToday = null, open = null, high = null, low = null
     try {
       const yhRes = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=1d`,
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1d&range=1d`,
         { headers: { 'User-Agent': 'Mozilla/5.0' } }
       )
       const yhData = await yhRes.json()
@@ -227,7 +218,7 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 3 — Histórico 1 año → indicadores técnicos (Polygon)
+    // 3 — Histórico 1 año → indicadores técnicos
     let ma50 = null, ma200 = null, rsi = null, macd = null, macdSignal = null
     let relVol = null, change1m = null, high52 = null, low52 = null
 
@@ -235,7 +226,7 @@ export async function POST(request) {
       const to   = new Date().toISOString().split('T')[0]
       const from = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       const histRes = await fetch(
-        `https://api.polygon.io/v2/aggs/ticker/${t}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=365&apiKey=${polygonKey}`
+        `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(t)}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=365&apiKey=${polygonKey}`
       )
       const hist = await histRes.json()
       const bars = hist.results || []
@@ -259,33 +250,33 @@ export async function POST(request) {
       }
     } catch {}
 
-    // 4 — Fundamentales desde Polygon TTM (D/E usa financial debt)
+    // 4 — Fundamentales TTM
     let fundamentals = null
     try {
       const finRes = await fetch(
-        `https://api.polygon.io/vX/reference/financials?ticker=${t}&limit=5&timeframe=quarterly&sort=period_of_report_date&order=desc&apiKey=${polygonKey}`
+        `https://api.polygon.io/vX/reference/financials?ticker=${encodeURIComponent(t)}&limit=5&timeframe=quarterly&sort=period_of_report_date&order=desc&apiKey=${polygonKey}`
       )
       const finData = await finRes.json()
       fundamentals = calcFundamentals(finData, price)
     } catch {}
 
-    // 5 — Earnings (Finnhub como fuente principal, sin fallback a Yahoo que devuelve null)
+    // 5 — Earnings (Finnhub)
     const { nextEarningsDate, lastEarningsDate, lastEarningsBeat } = await fetchEarnings(t, finnhubKey)
     const nextEarningsDays = calcEarningsDays(nextEarningsDate)
 
-    // 6 — Noticias (Polygon — últimos 7 días, fallback 30 días)
+    // 6 — Noticias
     let news = []
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       const newsRes = await fetch(
-        `https://api.polygon.io/v2/reference/news?ticker=${t}&limit=10&order=desc&sort=published_utc&published_utc.gte=${sevenDaysAgo}&apiKey=${polygonKey}`
+        `https://api.polygon.io/v2/reference/news?ticker=${encodeURIComponent(t)}&limit=10&order=desc&sort=published_utc&published_utc.gte=${sevenDaysAgo}&apiKey=${polygonKey}`
       )
       const newsData = await newsRes.json()
 
       if (!newsData.results?.length) {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         const newsRes2 = await fetch(
-          `https://api.polygon.io/v2/reference/news?ticker=${t}&limit=5&order=desc&sort=published_utc&published_utc.gte=${thirtyDaysAgo}&apiKey=${polygonKey}`
+          `https://api.polygon.io/v2/reference/news?ticker=${encodeURIComponent(t)}&limit=5&order=desc&sort=published_utc&published_utc.gte=${thirtyDaysAgo}&apiKey=${polygonKey}`
         )
         const newsData2 = await newsRes2.json()
         news = (newsData2.results || []).slice(0, 5).map(n => ({
@@ -313,6 +304,8 @@ export async function POST(request) {
       fetchedAt: new Date().toISOString()
     })
   } catch (err) {
-    return Response.json({ error: err.message || 'Error interno.' }, { status: 500 })
+    // Loguear internamente, nunca exponer al cliente
+    console.error('[market-data]', err?.message)
+    return Response.json({ error: 'Error al obtener datos del mercado.' }, { status: 500 })
   }
 }

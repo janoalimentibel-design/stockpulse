@@ -1,36 +1,38 @@
 // app/api/price-history/route.js
+import { validateTicker, validateRange } from '@/lib/validate'
+
 export async function POST(request) {
   try {
-    const { ticker, range } = await request.json()
-    if (!ticker) return Response.json({ error: 'Falta ticker.' }, { status: 400 })
+    const body = await request.json().catch(() => null)
+
+    const t = validateTicker(body?.ticker)
+    if (!t) return Response.json({ error: 'Ticker inválido.' }, { status: 400 })
+
+    const range = validateRange(body?.range)
 
     const polygonKey = process.env.POLYGON_API_KEY
-    if (!polygonKey) return Response.json({ error: 'Polygon API key no configurada.' }, { status: 500 })
+    if (!polygonKey) return Response.json({ error: 'Configuración del servidor incompleta.' }, { status: 500 })
 
-    const t = ticker.toUpperCase().trim()
     const now = new Date()
 
     if (range === '5A' || range === 'MAX') {
       return Response.json({ needsPro: true })
     }
 
-    // 1D: barras de 15 minutos del día de hoy (o último día hábil)
     if (range === '1D') {
       const toStr   = now.toISOString().split('T')[0]
       const from    = new Date(now)
-      from.setDate(from.getDate() - 4) // hasta 4 días atrás para cubrir fin de semana
+      from.setDate(from.getDate() - 4)
       const fromStr = from.toISOString().split('T')[0]
 
-      const url = `https://api.polygon.io/v2/aggs/ticker/${t}/range/15/minute/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=200&apiKey=${polygonKey}`
+      const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(t)}/range/15/minute/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=200&apiKey=${polygonKey}`
       const res  = await fetch(url)
       const data = await res.json()
 
       if (!data.results || data.results.length === 0) {
-        // degradar silenciosamente — el componente muestra "Sin datos disponibles" sin error rojo
         return Response.json({ ticker: t, range, points: [], change: null })
       }
 
-      // solo el último día de trading
       const lastDay = new Date(data.results[data.results.length - 1].t)
       const lastDayStr = lastDay.toISOString().split('T')[0]
       const filtered = data.results.filter(r => {
@@ -59,12 +61,11 @@ export async function POST(request) {
     const fromStr = from.toISOString().split('T')[0]
     const toStr   = now.toISOString().split('T')[0]
 
-    const url = `https://api.polygon.io/v2/aggs/ticker/${t}/range/${cfg.multiplier}/${cfg.timespan}/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=${cfg.limit}&apiKey=${polygonKey}`
+    const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(t)}/range/${cfg.multiplier}/${cfg.timespan}/${fromStr}/${toStr}?adjusted=true&sort=asc&limit=${cfg.limit}&apiKey=${polygonKey}`
     const res  = await fetch(url)
     const data = await res.json()
 
     if (!data.results || data.results.length === 0) {
-      // degradar silenciosamente en vez de mostrar error rojo
       return Response.json({ ticker: t, range, points: [], change: null })
     }
 
@@ -75,6 +76,7 @@ export async function POST(request) {
 
     return Response.json({ ticker: t, range, points, change })
   } catch (err) {
-    return Response.json({ error: err.message || 'Error interno.' }, { status: 500 })
+    console.error('[price-history]', err?.message)
+    return Response.json({ error: 'Error al obtener historial de precios.' }, { status: 500 })
   }
 }

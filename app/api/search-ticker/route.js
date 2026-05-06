@@ -1,7 +1,11 @@
 // app/api/search-ticker/route.js
+import { validateQuery } from '@/lib/validate'
+
 export async function POST(request) {
   try {
-    const { query } = await request.json()
+    const body = await request.json().catch(() => null)
+
+    const query = validateQuery(body?.query)
     if (!query) return Response.json({ results: [] })
 
     const polygonKey = process.env.POLYGON_API_KEY
@@ -9,7 +13,6 @@ export async function POST(request) {
 
     const q = query.toUpperCase().trim()
 
-    // Buscar por nombre Y por ticker en paralelo
     const [byName, byTicker] = await Promise.all([
       fetch(`https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&market=stocks&limit=8&apiKey=${polygonKey}`)
         .then(r => r.json()).catch(() => ({ results: [] })),
@@ -17,7 +20,6 @@ export async function POST(request) {
         .then(r => r.json()).catch(() => ({ results: [] })),
     ])
 
-    // Mergear sin duplicados
     const seen = new Set()
     const merged = []
     for (const t of [...(byTicker.results || []), ...(byName.results || [])]) {
@@ -27,7 +29,6 @@ export async function POST(request) {
       }
     }
 
-    // Ordenar: ticker exacto primero, luego empieza con query, luego el resto
     merged.sort((a, b) => {
       if (a.ticker === q) return -1
       if (b.ticker === q) return 1
@@ -39,7 +40,8 @@ export async function POST(request) {
     })
 
     return Response.json({ results: merged.slice(0, 6) })
-  } catch {
+  } catch (err) {
+    console.error('[search-ticker]', err?.message)
     return Response.json({ results: [] })
   }
 }
