@@ -26,7 +26,7 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
-      "connect-src 'self' https://eu.posthog.com https://app.posthog.com",
+      "connect-src 'self' https://eu.posthog.com https://eu.i.posthog.com https://app.posthog.com https://us.i.posthog.com",
       "font-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
