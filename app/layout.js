@@ -13,6 +13,9 @@ export default function RootLayout({ children }) {
         <PostHogProvider>
           {children}
         </PostHogProvider>
+        <footer className="text-center py-4 text-[11px]" style={{ color: 'var(--text3)', borderTop: '1px solid var(--border)' }}>
+          StockPulse es solo informativo. No somos asesores financieros registrados.
+        </footer>
       </body>
     </html>
   )

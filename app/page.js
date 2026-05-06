@@ -94,7 +94,6 @@ export default function Home() {
       })
       const nar = await narRes.json()
       setNarrative(nar.error ? { _error: nar.error } : nar)
-      // Track análisis completado
       posthog?.capture('analysis_completed', {
         ticker: t,
         score: prelimResult.score,
@@ -127,7 +126,7 @@ export default function Home() {
             Análisis de acciones
           </h1>
           <p className="text-sm mb-3" style={{ color: 'var(--text2)' }}>
-            Escribí un ticker y en segundos tenés análisis técnico, fundamental y narrativa en español — sin ser experto, sin registro.
+            ¿No sabés si comprar, vender o esperar? Escribí una acción y en segundos te lo explicamos.
           </p>
           <div className="flex gap-2 flex-wrap">
             {['Técnico · 8 indicadores', 'Fundamental · D/E, ROE, márgenes', 'Narrativa IA en español', 'Gratis · sin registro'].map((tag, i) => (
