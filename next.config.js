@@ -23,10 +23,10 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://eu-assets.i.posthog.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
-      "connect-src 'self' https://eu.posthog.com https://eu.i.posthog.com https://app.posthog.com https://us.i.posthog.com",
+      "connect-src 'self' https://eu.posthog.com https://eu.i.posthog.com https://eu-assets.i.posthog.com https://app.posthog.com https://us.i.posthog.com",
       "font-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
