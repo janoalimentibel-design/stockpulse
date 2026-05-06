@@ -1,9 +1,12 @@
 // app/api/narrative/route.js
 import { supabase } from '@/lib/supabase'
+import { validateTicker } from '@/lib/validate'
+import { checkRateLimit, getIP } from '@/lib/rate-limit'
 
 const CACHE_TTL_HOURS = 4
 
 async function getCached(ticker) {
+  if (!supabase) return null  // supabase puede ser null si las env vars no están
   try {
     const { data, error } = await supabase
       .from('narrative_cache')
@@ -23,6 +26,7 @@ async function getCached(ticker) {
 }
 
 async function setCached(ticker, payload) {
+  if (!supabase) return  // supabase puede ser null
   try {
     await supabase.from('narrative_cache').upsert({ ticker, data: payload, created_at: new Date().toISOString() })
   } catch (e) {
@@ -36,7 +40,7 @@ function sanitizeText(text) {
   return text
     .replace(/]*>/gi, '')
     .replace(/<\/antml:cite>/gi, '')
-    .replace(/<[^>]+>/g, '')           // cualquier otro tag HTML
+    .replace(/<[^>]+>/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
 }
@@ -56,7 +60,21 @@ function sanitizeNarrative(obj) {
   return sanitized
 }
 
-// Valida que la narrativa no contradiga el panel — Fix #2
+/**
+ * Limpia strings que van al prompt para prevenir prompt injection.
+ * Elimina saltos de línea (rompen la estructura del prompt), limita longitud,
+ * y quita los separadores "━" que usamos para estructurar el prompt.
+ */
+function sanitizePromptInput(str, maxLen = 120) {
+  if (!str || typeof str !== 'string') return ''
+  return str
+    .replace(/[\n\r]/g, ' ')   // saltos de línea rompen la estructura del prompt
+    .replace(/━/g, '-')         // nuestro separador de secciones
+    .replace(/[<>]/g, '')       // HTML básico
+    .slice(0, maxLen)
+    .trim()
+}
+
 function validateNarrative(narrative, panelData) {
   const issues = []
   const tech = (narrative.technical_summary || '').toLowerCase()
@@ -66,43 +84,35 @@ function validateNarrative(narrative, panelData) {
 
   const { cruceMA, rsi, position52w, score, trend } = panelData
 
-  // Caso 1: Death Cross — narrativa NO puede decir "alcista de largo plazo"
   if (cruceMA === 'Death Cross') {
     const alcistaPhrases = ['alcista de largo plazo', 'tendencia alcista de largo', 'long-term bullish', 'tendencia positiva de largo']
-    const hasContradiccion = alcistaPhrases.some(p => allText.includes(p))
-    if (hasContradiccion) {
+    if (alcistaPhrases.some(p => allText.includes(p))) {
       issues.push(`Death Cross activo pero la narrativa describe tendencia alcista de largo plazo`)
     }
   }
 
-  // Caso 2: Tendencia bajista (score <= 35) — narrativa NO puede tener tono optimista sin contexto
   if (trend === 'Tendencia bajista') {
     const optimistaPhrases = ['señal de compra', 'excelente momento para comprar', 'fuerte oportunidad de compra']
-    const hasContradiccion = optimistaPhrases.some(p => allText.includes(p))
-    if (hasContradiccion) {
+    if (optimistaPhrases.some(p => allText.includes(p))) {
       issues.push(`Panel bajista pero narrativa tiene tono de compra`)
     }
   }
 
-  // Caso 3: RSI > 70 — narrativa DEBE mencionar riesgo de corrección
   if (rsi != null && rsi > 70) {
-    const mentionsRisk = allText.includes('sobrecompra') || allText.includes('corrección') || 
+    const mentionsRisk = allText.includes('sobrecompra') || allText.includes('corrección') ||
                          allText.includes('rsi') || allText.includes('sobrecomprado')
     if (!mentionsRisk) {
       issues.push(`RSI ${rsi} (sobrecompra) no se menciona en la narrativa`)
     }
   }
 
-  // Caso 4: Precio en zona baja 52W (< 25%) — narrativa NO puede decir "cerca de máximos" o "fortaleza"
   if (position52w != null && position52w < 25) {
     const strengthPhrases = ['cerca de máximos', 'fortaleza técnica', 'máximos históricos']
-    const hasContradiccion = strengthPhrases.some(p => allText.includes(p))
-    if (hasContradiccion) {
+    if (strengthPhrases.some(p => allText.includes(p))) {
       issues.push(`Precio en ${position52w}% del rango 52W pero narrativa menciona fortaleza o máximos`)
     }
   }
 
-  // Caso 5: MACD vs momentum — si MACD bajista, no puede haber "momentum positivo" o "impulso alcista"
   const { macd: macdVal, macdSignal: macdSigVal } = panelData
   if (macdVal != null && macdSigVal != null) {
     const macdBearish = macdVal < macdSigVal
@@ -110,17 +120,16 @@ function validateNarrative(narrative, panelData) {
     const bullishMomentumPhrases = ['momentum positivo', 'impulso alcista', 'momentum alcista', 'impulso positivo', 'momentum favorable']
     const bearishMomentumPhrases = ['presión bajista', 'momentum negativo', 'impulso bajista', 'presión vendedora', 'momentum desfavorable']
     if (macdBearish && bullishMomentumPhrases.some(p => allText.includes(p))) {
-      issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo o impulso alcista`)
+      issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo`)
     }
     if (macdBullish && bearishMomentumPhrases.some(p => allText.includes(p))) {
-      issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista o momentum negativo`)
+      issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista`)
     }
   }
 
   return issues
 }
 
-// Construye el contexto del panel para pasar al prompt de reintentos
 function buildPanelContext(panelData) {
   const { cruceMA, rsi, position52w, trend, signal, score } = panelData
   const parts = []
@@ -133,26 +142,49 @@ function buildPanelContext(panelData) {
 
 export async function POST(request) {
   try {
-    const { data } = await request.json()
-    if (!data) return Response.json({ error: 'Faltan datos.' }, { status: 400 })
+    // Rate limiting — 10 análisis por IP por hora
+    const ip = getIP(request)
+    const { allowed, retryAfter } = await checkRateLimit(ip, 'narrative')
+    if (!allowed) {
+      return Response.json(
+        { error: 'Límite de análisis alcanzado. Intentá de nuevo en unos minutos.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      )
+    }
+
+    const body = await request.json().catch(() => null)
+    if (!body?.data) return Response.json({ error: 'Faltan datos.' }, { status: 400 })
 
     const claudeKey = process.env.ANTHROPIC_API_KEY
-    if (!claudeKey) return Response.json({ error: 'Claude API key no configurada en el servidor.' }, { status: 500 })
+    if (!claudeKey) return Response.json({ error: 'Configuración del servidor incompleta.' }, { status: 500 })
 
     const {
-      ticker, companyName, sector, news,
+      ticker: rawTicker, companyName: rawCompanyName, sector: rawSector, news: rawNews,
       price, priceChangeToday, high, low,
-      // Técnicos
       ma50, ma200, rsi, macd, macdSignal, relVol, change1m, high52, low52,
-      // Fundamentales desde Polygon (Fix #1)
       fundamentals,
-      // Earnings
       nextEarningsDate, nextEarningsDays,
-      // Veredicto del panel para validación (Fix #2)
       panelData,
-    } = data
+    } = body.data
 
-    const cacheKey = ticker?.toUpperCase()
+    // Validar ticker — mismo filtro que en market-data
+    const ticker = validateTicker(rawTicker)
+    if (!ticker) return Response.json({ error: 'Ticker inválido.' }, { status: 400 })
+
+    // Sanitizar campos de texto libre que van al prompt (anti prompt injection)
+    const companyName = sanitizePromptInput(rawCompanyName, 80) || ticker
+    const sector      = sanitizePromptInput(rawSector, 60) || null
+
+    // Sanitizar títulos y publishers de noticias
+    const news = Array.isArray(rawNews)
+      ? rawNews.slice(0, 5).map(n => ({
+          ...n,
+          title:     sanitizePromptInput(n.title, 150),
+          publisher: sanitizePromptInput(n.publisher, 60),
+        }))
+      : []
+
+    const cacheKey = ticker
     const cached = await getCached(cacheKey)
     if (cached) {
       console.log(`[narrative] Cache HIT (Supabase): ${cacheKey}`)
@@ -162,7 +194,6 @@ export async function POST(request) {
 
     const today = new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
-    // Construir contexto de noticias con ventana explícita de 7 días
     const newsContext = news?.length
       ? news.map(n => {
           const pub = n.published ? n.published.split('T')[0] : ''
@@ -170,7 +201,6 @@ export async function POST(request) {
         }).join('\n')
       : null
 
-    // Construir contexto técnico
     const ma50str  = ma50  != null ? `$${ma50}`  : 'N/D'
     const ma200str = ma200 != null ? `$${ma200}` : 'N/D'
     const cruceMA  = (ma50 != null && ma200 != null) ? (ma50 > ma200 ? 'Golden Cross (MA50 > MA200)' : 'Death Cross (MA50 < MA200)') : 'N/D'
@@ -183,21 +213,18 @@ export async function POST(request) {
     const pos52wStr = pos52w != null ? `${pos52w}%` : 'N/D'
     const change1mStr = change1m != null ? `${change1m > 0 ? '+' : ''}${change1m}%` : 'N/D'
 
-    // Construir contexto de fundamentales (solo mostrar lo que tenemos de Polygon)
     const fund = fundamentals || {}
-    // P/E > 500 es una distorsión contable (ganancias casi cero), no una métrica útil para el inversor
     const peDisplay = fund.pe != null
       ? (fund.pe > 500 ? `P/E (TTM): no significativo (ganancias muy reducidas vs precio)` : `P/E (TTM): ${fund.pe}`)
       : null
     const fundContext = [
       peDisplay,
-      fund.epsGrowth!= null ? `Crecimiento EPS: ${fund.epsGrowth > 0 ? '+' : ''}${fund.epsGrowth}%` : null,
-      fund.netMargin!= null ? `Margen neto: ${fund.netMargin}%` : null,
-      fund.roe      != null ? `ROE: ${fund.roe}%` : null,
-      fund.de       != null ? `D/E: ${fund.de}` : null,
+      fund.epsGrowth != null ? `Crecimiento EPS: ${fund.epsGrowth > 0 ? '+' : ''}${fund.epsGrowth}%` : null,
+      fund.netMargin != null ? `Margen neto: ${fund.netMargin}%` : null,
+      fund.roe       != null ? `ROE: ${fund.roe}%` : null,
+      fund.de        != null ? `D/E: ${fund.de}` : null,
     ].filter(Boolean).join(' · ') || 'No disponible desde Polygon en este ticker'
 
-    // Construir contexto de earnings
     let earningsContext = ''
     if (nextEarningsDate) {
       if (nextEarningsDays != null && nextEarningsDays >= 0 && nextEarningsDays <= 14) {
@@ -209,7 +236,6 @@ export async function POST(request) {
       }
     }
 
-    // Veredicto del panel para reglas de coherencia
     const panelVeredicto = panelData
       ? `VEREDICTO DEL PANEL: ${panelData.trend} — ${panelData.signal} (score ${panelData.score}%)`
       : ''
@@ -217,7 +243,7 @@ export async function POST(request) {
     const prompt = `Hoy es ${today}. Sos un analista financiero experto escribiendo para el inversor hispanoparlante no profesional.
 
 ━━━ DATOS DE MERCADO (calculados por backend — NO inventar otros números) ━━━
-Ticker: ${ticker} — ${companyName || ticker}${sector ? ` · ${sector}` : ''}
+Ticker: ${ticker} — ${companyName}${sector ? ` · ${sector}` : ''}
 Precio: $${price ?? 'N/D'} (${priceChangeToday != null ? (priceChangeToday >= 0 ? '+' : '') + priceChangeToday + '% hoy' : 'variación N/D'})
 Rango día: $${low ?? 'N/D'} – $${high ?? 'N/D'}
 MA50: ${ma50str} · MA200: ${ma200str} · Cruce: ${cruceMA}
@@ -267,7 +293,6 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
   }
 }`
 
-    // Función interna para llamar a Claude
     async function callClaude(promptText) {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -280,30 +305,27 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.error?.message || `Error Anthropic HTTP ${res.status}`)
+        // Loguear detalle interno, exponer solo mensaje genérico
+        const detail = err.error?.message || `HTTP ${res.status}`
+        console.error('[narrative] Error Anthropic:', detail)
+        throw new Error('Error al generar análisis narrativo.')
       }
       const anthropicData = await res.json()
       const raw = anthropicData.content?.find(b => b.type === 'text')?.text || ''
       const s = raw.indexOf('{'), e = raw.lastIndexOf('}')
-      if (s === -1 || e === -1) throw new Error('Claude no devolvió JSON válido.')
+      if (s === -1 || e === -1) throw new Error('Respuesta de IA en formato inesperado.')
       return JSON.parse(raw.slice(s, e + 1))
     }
 
-    // Primera llamada
     let parsed = await callClaude(prompt)
 
-    // Validación cruzada panel ↔ narrativa — Fix #2
     if (panelData) {
       const cruceForValidation = ma50 != null && ma200 != null ? (ma50 > ma200 ? 'Golden Cross' : 'Death Cross') : null
       const validationInput = {
         cruceMA: cruceForValidation,
-        rsi: rsi,
-        position52w: pos52w,
-        trend: panelData.trend,
-        signal: panelData.signal,
-        score: panelData.score,
-        macd: macd,
-        macdSignal: macdSignal,
+        rsi, position52w: pos52w,
+        trend: panelData.trend, signal: panelData.signal, score: panelData.score,
+        macd, macdSignal,
       }
       const issues = validateNarrative(parsed, validationInput)
 
@@ -311,7 +333,6 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         console.warn(`[narrative] Validación fallida para ${ticker}:`, issues)
         const firstResponse = parsed
 
-        // Reintento con contexto del conflicto
         const retryPrompt = `${prompt}
 
 ━━━ CORRECCIÓN NECESARIA ━━━
@@ -331,18 +352,16 @@ Reescribí la narrativa corrigiendo estas contradicciones. La narrativa DEBE ser
           }
         } catch (retryErr) {
           console.error(`[narrative] Error en reintento para ${ticker}:`, retryErr.message)
-          // Mantener primera respuesta si el reintento falla
         }
       }
     }
 
-    // Sanitizar tags cite y artefactos — Fix cite tags
     const sanitized = sanitizeNarrative(parsed)
-
     await setCached(cacheKey, sanitized)
     return Response.json(sanitized)
 
   } catch (err) {
-    return Response.json({ error: err.message || 'Error generando narrativa.' }, { status: 500 })
+    console.error('[narrative]', err?.message)
+    return Response.json({ error: 'Error al generar el análisis. Intentá de nuevo.' }, { status: 500 })
   }
 }

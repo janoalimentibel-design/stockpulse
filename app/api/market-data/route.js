@@ -1,5 +1,6 @@
 // app/api/market-data/route.js
 import { validateTicker } from '@/lib/validate'
+import { checkRateLimit, getIP } from '@/lib/rate-limit'
 
 function calcMA(closes, period) {
   if (!closes || closes.length < period) return null
@@ -120,14 +121,11 @@ function calcEarningsDays(earningsDate) {
 async function fetchEarnings(ticker, finnhubKey) {
   if (!finnhubKey) return {}
 
-  // ticker ya está validado antes de llegar aquí — solo [A-Z0-9.\-]
   const today      = new Date().toISOString().split('T')[0]
   const in90days   = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   const ago180days = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  let nextEarningsDate = null
-  let lastEarningsDate = null
-  let lastEarningsBeat = null
+  let nextEarningsDate = null, lastEarningsDate = null, lastEarningsBeat = null
 
   try {
     const calRes = await fetch(
@@ -136,8 +134,7 @@ async function fetchEarnings(ticker, finnhubKey) {
     )
     if (calRes.ok) {
       const calData = await calRes.json()
-      const upcoming = calData?.earningsCalendar
-      if (upcoming?.length) nextEarningsDate = upcoming[0].date
+      if (calData?.earningsCalendar?.length) nextEarningsDate = calData.earningsCalendar[0].date
     }
   } catch {}
 
@@ -151,9 +148,7 @@ async function fetchEarnings(ticker, finnhubKey) {
       if (histData?.length) {
         const last = histData[0]
         lastEarningsDate = last.period ?? null
-        if (last.actual != null && last.estimate != null) {
-          lastEarningsBeat = last.actual >= last.estimate
-        }
+        if (last.actual != null && last.estimate != null) lastEarningsBeat = last.actual >= last.estimate
       }
     }
   } catch {}
@@ -167,9 +162,7 @@ async function fetchEarnings(ticker, finnhubKey) {
       if (pastRes.ok) {
         const pastData = await pastRes.json()
         const pastEarnings = pastData?.earningsCalendar
-        if (pastEarnings?.length) {
-          nextEarningsDate = pastEarnings[pastEarnings.length - 1].date
-        }
+        if (pastEarnings?.length) nextEarningsDate = pastEarnings[pastEarnings.length - 1].date
       }
     } catch {}
   }
@@ -177,11 +170,60 @@ async function fetchEarnings(ticker, finnhubKey) {
   return { nextEarningsDate, lastEarningsDate, lastEarningsBeat }
 }
 
+/**
+ * Alerta por email cuando Yahoo Finance falla.
+ * Solo llega a ALERT_EMAIL — nunca al usuario.
+ * Si Resend no está configurado, falla silenciosamente.
+ */
+async function alertYahooDown(ticker, errorMsg) {
+  const resendKey  = process.env.RESEND_API_KEY
+  const alertEmail = process.env.ALERT_EMAIL
+  if (!resendKey || !alertEmail) return  // no configurado → silencio
+
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${resendKey}`,
+      },
+      body: JSON.stringify({
+        from: 'alerts@stockpulse.app',  // cambiar a tu dominio verificado en Resend
+        to: alertEmail,
+        subject: `[StockPulse] Yahoo Finance no responde — ${ticker}`,
+        html: `
+          <p><strong>Yahoo Finance no respondió</strong> para el ticker <code>${ticker}</code>.</p>
+          <p><strong>Error:</strong> ${errorMsg}</p>
+          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+          <p>El precio en tiempo real no estará disponible hasta que se restablezca la conexión.</p>
+          <hr>
+          <p style="color:#666;font-size:12px">StockPulse · alerta automática</p>
+        `,
+      }),
+    })
+  } catch {
+    // Si el email falla, solo logueamos — nunca propagar el error
+    console.error('[alert] No se pudo enviar alerta de Yahoo Finance')
+  }
+}
+
+// Control para no enviar la misma alerta repetidamente en la misma instancia del servidor
+let lastYahooAlertAt = 0
+const YAHOO_ALERT_COOLDOWN_MS = 30 * 60 * 1000 // 1 alerta cada 30 minutos como máximo
+
 export async function POST(request) {
   try {
-    const body = await request.json().catch(() => null)
+    // Rate limiting — 30 requests por IP por hora
+    const ip = getIP(request)
+    const { allowed, retryAfter } = await checkRateLimit(ip, 'market-data')
+    if (!allowed) {
+      return Response.json(
+        { error: 'Demasiadas consultas. Intentá de nuevo en unos minutos.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      )
+    }
 
-    // Validar ticker: solo [A-Z0-9.\-], máximo 12 chars
+    const body = await request.json().catch(() => null)
     const t = validateTicker(body?.ticker)
     if (!t) return Response.json({ error: 'Ticker inválido.' }, { status: 400 })
 
@@ -205,18 +247,25 @@ export async function POST(request) {
         `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1d&range=1d`,
         { headers: { 'User-Agent': 'Mozilla/5.0' } }
       )
+      if (!yhRes.ok) throw new Error(`Yahoo respondió ${yhRes.status}`)
       const yhData = await yhRes.json()
       const meta = yhData?.chart?.result?.[0]?.meta
-      if (meta) {
-        price            = meta.regularMarketPrice ?? meta.previousClose ?? null
-        priceChangeToday = meta.regularMarketPrice && meta.previousClose
-          ? parseFloat(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose * 100).toFixed(2))
-          : null
-        open  = meta.regularMarketOpen ?? null
-        high  = meta.regularMarketDayHigh ?? null
-        low   = meta.regularMarketDayLow ?? null
+      if (!meta) throw new Error('Respuesta de Yahoo sin datos de precio')
+      price            = meta.regularMarketPrice ?? meta.previousClose ?? null
+      priceChangeToday = meta.regularMarketPrice && meta.previousClose
+        ? parseFloat(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose * 100).toFixed(2))
+        : null
+      open  = meta.regularMarketOpen ?? null
+      high  = meta.regularMarketDayHigh ?? null
+      low   = meta.regularMarketDayLow ?? null
+    } catch (yahooErr) {
+      console.error(`[market-data] Yahoo Finance falló para ${t}:`, yahooErr?.message)
+      // Enviar alerta solo si pasó suficiente tiempo desde la última
+      if (Date.now() - lastYahooAlertAt > YAHOO_ALERT_COOLDOWN_MS) {
+        lastYahooAlertAt = Date.now()
+        alertYahooDown(t, yahooErr?.message)  // fire and forget — no await
       }
-    } catch {}
+    }
 
     // 3 — Histórico 1 año → indicadores técnicos
     let ma50 = null, ma200 = null, rsi = null, macd = null, macdSignal = null
@@ -297,14 +346,11 @@ export async function POST(request) {
       ma50, ma200, rsi, macd, macdSignal,
       relVol, change1m, high52, low52,
       fundamentals,
-      nextEarningsDate,
-      nextEarningsDays,
-      lastEarningsDate,
-      lastEarningsBeat,
+      nextEarningsDate, nextEarningsDays,
+      lastEarningsDate, lastEarningsBeat,
       fetchedAt: new Date().toISOString()
     })
   } catch (err) {
-    // Loguear internamente, nunca exponer al cliente
     console.error('[market-data]', err?.message)
     return Response.json({ error: 'Error al obtener datos del mercado.' }, { status: 500 })
   }
