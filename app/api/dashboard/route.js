@@ -1,20 +1,26 @@
 // app/api/dashboard/route.js
-// Env var necesaria: POSTHOG_PERSONAL_API_KEY (solo esta)
+// Env var necesaria: POSTHOG_PERSONAL_API_KEY
 import { NextResponse } from 'next/server'
 
 const HOST    = 'https://eu.posthog.com'
 const PROJECT = '169311'
 const KEY     = process.env.POSTHOG_PERSONAL_API_KEY
 
-export const revalidate = 60
-
 async function phFetch(path) {
-  const res = await fetch(`${HOST}/api/projects/${PROJECT}${path}`, {
-    headers: { Authorization: `Bearer ${KEY}` },
-    next: { revalidate: 60 },
-  }).catch(() => null)
-  if (!res?.ok) return null
-  return res.json()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000) // 8s timeout
+  try {
+    const res = await fetch(`${HOST}/api/projects/${PROJECT}${path}`, {
+      headers: { Authorization: `Bearer ${KEY}` },
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    clearTimeout(timeout)
+    return null
+  }
 }
 
 export async function GET() {
@@ -36,7 +42,6 @@ export async function GET() {
 
   const todayStr = now.toDateString()
 
-  // ── Métricas de producto ─────────────────────────────────
   const tickerCounts = {}
   const tickerScores = {}
   const trendCounts  = { alcista: 0, bajista: 0, neutral: 0 }
@@ -60,7 +65,10 @@ export async function GET() {
     const ticker = p.ticker
     if (ticker) {
       tickerCounts[ticker] = (tickerCounts[ticker] || 0) + 1
-      if (p.score != null) { tickerScores[ticker] = tickerScores[ticker] || []; tickerScores[ticker].push(Number(p.score)) }
+      if (p.score != null) {
+        tickerScores[ticker] = tickerScores[ticker] || []
+        tickerScores[ticker].push(Number(p.score))
+      }
     }
 
     const trend = (p.trend || '').toLowerCase()
@@ -68,11 +76,11 @@ export async function GET() {
 
     if (p.score != null) {
       const s = Number(p.score); scoreSum += s; scoreN++
-      if (s <= 20) scoreBuckets['0-20']++
+      if      (s <= 20) scoreBuckets['0-20']++
       else if (s <= 40) scoreBuckets['21-40']++
       else if (s <= 60) scoreBuckets['41-60']++
       else if (s <= 80) scoreBuckets['61-80']++
-      else scoreBuckets['81-100']++
+      else              scoreBuckets['81-100']++
     }
     if (p.narrative_ok) narrativeOk++
   }
@@ -84,16 +92,13 @@ export async function GET() {
       return { name, count, avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b) / scores.length) : null }
     })
 
-  // ── Inteligencia de usuarios ─────────────────────────────
   const userMap = {}
-
   for (const e of allEvents) {
     const uid    = e.distinct_id
     const ticker = e.properties?.ticker
     const ts     = new Date(e.timestamp)
 
     if (!userMap[uid]) userMap[uid] = { analyses: 0, searches: 0, tickers: [], firstSeen: ts, lastSeen: ts }
-
     const u = userMap[uid]
     if (e.event === 'analysis_completed') u.analyses++
     if (e.event === 'ticker_searched')    u.searches++
@@ -150,7 +155,7 @@ export async function GET() {
       avgPerUser: totalUsers ? +(completed.length / totalUsers).toFixed(1) : 0,
       maxPerUser: users.reduce((m, u) => Math.max(m, u.analyses), 0),
       freqBuckets, topPairs,
-      topByVolume: users.sort((a, b) => b.analyses - a.analyses).slice(0, 5).map(u => ({
+      topByVolume: [...users].sort((a, b) => b.analyses - a.analyses).slice(0, 5).map(u => ({
         id:       u.id.slice(0, 8) + '…',
         analyses: u.analyses,
         searches: u.searches,
