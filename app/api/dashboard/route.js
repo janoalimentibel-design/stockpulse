@@ -1,24 +1,34 @@
 // app/api/dashboard/route.js
-// Env var necesaria: POSTHOG_PERSONAL_API_KEY
+// Env var: POSTHOG_PERSONAL_API_KEY
 import { NextResponse } from 'next/server'
 
 const HOST    = 'https://eu.posthog.com'
 const PROJECT = '169311'
 const KEY     = process.env.POSTHOG_PERSONAL_API_KEY
 
-async function phFetch(path) {
+async function hogql(sql) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 8000) // 8s timeout
+  const timeout = setTimeout(() => controller.abort(), 12000)
   try {
-    const res = await fetch(`${HOST}/api/projects/${PROJECT}${path}`, {
-      headers: { Authorization: `Bearer ${KEY}` },
+    const res = await fetch(`${HOST}/api/projects/${PROJECT}/query`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: { kind: 'HogQLQuery', query: sql } }),
       signal: controller.signal,
     })
     clearTimeout(timeout)
-    if (!res.ok) return null
+    if (!res.ok) {
+      const err = await res.text().catch(() => '')
+      console.error('Posthog HogQL error:', res.status, err)
+      return null
+    }
     return res.json()
-  } catch {
+  } catch (e) {
     clearTimeout(timeout)
+    console.error('Posthog fetch failed:', e.message)
     return null
   }
 }
@@ -27,21 +37,42 @@ export async function GET() {
   if (!KEY)
     return NextResponse.json({ error: 'Missing POSTHOG_PERSONAL_API_KEY' }, { status: 500 })
 
-  const now   = new Date()
-  const ago7  = new Date(now - 7  * 24 * 60 * 60 * 1000).toISOString()
-  const ago30 = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const now = new Date()
 
-  const [completedData, searchedData] = await Promise.all([
-    phFetch(`/events/?event=analysis_completed&after=${ago30}&limit=1000&orderBy=-timestamp`),
-    phFetch(`/events/?event=ticker_searched&after=${ago30}&limit=1000&orderBy=-timestamp`),
-  ])
+  // Una sola query trae todo — más eficiente que dos calls
+  const result = await hogql(`
+    SELECT
+      event,
+      distinct_id,
+      properties,
+      timestamp
+    FROM events
+    WHERE event IN ('analysis_completed', 'ticker_searched')
+      AND timestamp > now() - INTERVAL 30 DAY
+    ORDER BY timestamp DESC
+    LIMIT 1000
+  `)
 
-  const completed = completedData?.results || []
-  const searched  = searchedData?.results  || []
-  const allEvents = [...completed, ...searched]
+  // HogQL devuelve { results: [[event, distinct_id, properties_str, timestamp], ...], columns: [...] }
+  const rows = result?.results || []
 
-  const todayStr = now.toDateString()
+  // Parsear cada fila — properties viene como string JSON
+  const events = rows.map(row => {
+    let props = {}
+    try { props = typeof row[2] === 'string' ? JSON.parse(row[2]) : (row[2] || {}) } catch {}
+    return {
+      event:       row[0],
+      distinct_id: row[1],
+      properties:  props,
+      timestamp:   row[3],
+    }
+  })
 
+  const completed = events.filter(e => e.event === 'analysis_completed')
+  const todayStr  = now.toDateString()
+  const ago7      = new Date(now - 7 * 24 * 60 * 60 * 1000)
+
+  // ── Métricas de producto ─────────────────────────────────
   const tickerCounts = {}
   const tickerScores = {}
   const trendCounts  = { alcista: 0, bajista: 0, neutral: 0 }
@@ -55,12 +86,12 @@ export async function GET() {
   }
 
   for (const e of completed) {
-    const p  = e.properties || {}
+    const p  = e.properties
     const ts = new Date(e.timestamp)
     const day = ts.toDateString()
 
     if (day === todayStr) todayCount++
-    if (ts >= new Date(ago7)) { sevenDayCount++; if (dailyMap[day]) dailyMap[day].count++ }
+    if (ts >= ago7) { sevenDayCount++; if (dailyMap[day]) dailyMap[day].count++ }
 
     const ticker = p.ticker
     if (ticker) {
@@ -92,8 +123,9 @@ export async function GET() {
       return { name, count, avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b) / scores.length) : null }
     })
 
+  // ── Inteligencia de usuarios ─────────────────────────────
   const userMap = {}
-  for (const e of allEvents) {
+  for (const e of events) {
     const uid    = e.distinct_id
     const ticker = e.properties?.ticker
     const ts     = new Date(e.timestamp)
@@ -110,7 +142,7 @@ export async function GET() {
   const users = Object.entries(userMap).map(([id, u]) => ({ ...u, id }))
   const totalUsers  = users.length
   const activeToday = users.filter(u => new Date(u.lastSeen).toDateString() === todayStr).length
-  const active7d    = users.filter(u => new Date(u.lastSeen) >= new Date(ago7)).length
+  const active7d    = users.filter(u => new Date(u.lastSeen) >= ago7).length
   const powerUsers  = users.filter(u => u.analyses >= 5).length
 
   const freqBuckets = { '1': 0, '2-4': 0, '5-9': 0, '10+': 0 }
@@ -134,8 +166,8 @@ export async function GET() {
   }
 
   const pairs = []
-  for (const [a, related] of Object.entries(coOccurrence))
-    for (const [b, count] of Object.entries(related))
+  for (const [a, rel] of Object.entries(coOccurrence))
+    for (const [b, count] of Object.entries(rel))
       if (a < b) pairs.push({ a, b, count })
   const topPairs = pairs.sort((x, y) => y.count - x.count).slice(0, 8)
 
@@ -163,6 +195,8 @@ export async function GET() {
         lastSeen: u.lastSeen,
       })),
     },
+    // Debug: cuántas filas trajo Posthog (sacar en producción)
+    _debug: { totalRows: rows.length, completedRows: completed.length },
     generatedAt: now.toISOString(),
   })
 }
