@@ -195,7 +195,7 @@ export async function POST(request) {
     const recentEarnings = isWithinDays(lastEarningsReportDate, EARNINGS_CACHE_BYPASS_DAYS)
     if (recentEarnings) {
       console.log(`[narrative] Cache BYPASS: ${ticker} reportó el ${lastEarningsReportDate} (hace menos de ${EARNINGS_CACHE_BYPASS_DAYS} días)`)
-      await supabase?.from('narrative_cache').delete().eq('ticker', ticker).catch(() => {})
+      if (supabase) { try { await supabase.from('narrative_cache').delete().eq('ticker', ticker) } catch {} }
     } else {
       const cached = await getCached(cacheKey)
       if (cached) {
