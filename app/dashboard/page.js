@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 
 const REFRESH = 30
 
-// ─── Design tokens (StockPulse palette) ──────────────────
 const C = {
   bg:'#0b0d12', bg2:'#12151c', bg3:'#1a1e28', bg4:'#222633',
   border:'rgba(255,255,255,0.07)', border2:'rgba(255,255,255,0.12)',
@@ -17,13 +16,12 @@ const C = {
   purpleBg:'rgba(167,139,250,0.10)', purpleBd:'rgba(167,139,250,0.28)',
 }
 
-// ─── Tiny components ─────────────────────────────────────
 function Box({ children, style }) {
   return <div style={{ background:C.bg2, border:`1px solid ${C.border2}`, borderRadius:10, padding:'14px 16px', ...style }}>{children}</div>
 }
 
-function Label({ children, style }) {
-  return <p style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'.08em', color:C.text3, marginBottom:6, ...style }}>{children}</p>
+function Label({ children }) {
+  return <p style={{ fontSize:10, textTransform:'uppercase', letterSpacing:'.08em', color:C.text3, marginBottom:6 }}>{children}</p>
 }
 
 function Hint({ children }) {
@@ -44,9 +42,9 @@ function Pill({ label, bg, color, border }) {
 
 function TrendPill({ trend }) {
   const map = {
-    alcista:{ label:'Alcista', bg:C.greenBg,  color:C.green,  border:C.greenBd  },
-    bajista:{ label:'Bajista', bg:C.redBg,    color:C.red,    border:C.redBd    },
-    neutral:{ label:'Neutral', bg:C.amberBg,  color:C.amber,  border:C.amberBd  },
+    alcista:{ label:'Alcista', bg:C.greenBg, color:C.green, border:C.greenBd },
+    bajista:{ label:'Bajista', bg:C.redBg,   color:C.red,   border:C.redBd   },
+    neutral:{ label:'Neutral', bg:C.amberBg, color:C.amber, border:C.amberBd },
   }
   const t = map[(trend||'neutral').toLowerCase()] || map.neutral
   return <Pill label={t.label} bg={t.bg} color={t.color} border={t.border} />
@@ -55,7 +53,7 @@ function TrendPill({ trend }) {
 function NavTab({ label, active, onClick }) {
   return (
     <button onClick={onClick} style={{
-      padding:'7px 16px', fontSize:12, borderRadius:999, border:`1px solid`,
+      padding:'7px 16px', fontSize:12, borderRadius:999, border:'1px solid',
       cursor:'pointer', transition:'all .15s',
       borderColor: active ? C.accent : C.border2,
       background:  active ? C.accentBg : 'transparent',
@@ -64,7 +62,7 @@ function NavTab({ label, active, onClick }) {
   )
 }
 
-function InsightBox({ icon, title, body, color = C.amber, bg = C.amberBg, border = C.amberBd }) {
+function InsightBox({ icon, title, body, color, bg, border }) {
   return (
     <div style={{ background:bg, border:`1px solid ${border}`, borderRadius:8, padding:'12px 14px' }}>
       <p style={{ fontSize:11, fontWeight:500, color, marginBottom:5 }}>{icon} {title}</p>
@@ -73,7 +71,8 @@ function InsightBox({ icon, title, body, color = C.amber, bg = C.amberBg, border
   )
 }
 
-// ─── Main ─────────────────────────────────────────────────
+const scoreColor = (s) => s >= 65 ? C.green : s >= 40 ? C.amber : C.red
+
 export default function DashboardPage() {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
@@ -85,7 +84,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true); setSecs(0)
     try {
-      const res = await fetch('/api/dashboard')
+      const res = await fetch('/api/dashboard', { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData(await res.json()); setError(null)
     } catch (e) { setError(e.message) }
@@ -105,7 +104,7 @@ export default function DashboardPage() {
   )
   if (error) return (
     <div style={{ minHeight:'100vh', background:C.bg, display:'flex', alignItems:'center', justifyContent:'center', color:C.red, fontSize:13, fontFamily:'system-ui,sans-serif' }}>
-      Error al cargar datos: {error}
+      Error: {error}
     </div>
   )
 
@@ -113,20 +112,16 @@ export default function DashboardPage() {
   const u = d.users || {}
   const maxTicker  = d.topTickers?.[0]?.count || 1
   const maxDay     = Math.max(...(d.daily?.map(x=>x.count)||[1]), 1)
-  const maxFreq    = Math.max(...Object.values(u.freqBuckets||{1:1}), 1)
+  const maxFreq    = Math.max(...Object.values(u.freqBuckets||{'1':1}), 1)
   const maxPair    = u.topPairs?.[0]?.count || 1
   const totalTrend = Object.values(d.trendCounts||{}).reduce((a,b)=>a+b,0) || 1
   const genTime    = d.generatedAt ? new Date(d.generatedAt).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'}) : '—'
-
-  // Score color
-  const scoreColor = (s) => s >= 65 ? C.green : s >= 40 ? C.amber : C.red
-  const scoreLabel = (s) => s >= 65 ? 'Alcista' : s >= 40 ? 'Neutral' : 'Bajista'
 
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.text, padding:'16px', fontFamily:'system-ui,sans-serif' }}>
       <div style={{ maxWidth:1060, margin:'0 auto' }}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:8 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             <div style={{ width:28, height:28, background:C.accent, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff' }}>S</div>
@@ -137,24 +132,20 @@ export default function DashboardPage() {
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <span style={{ width:6, height:6, borderRadius:'50%', background:C.green, display:'inline-block' }} />
-            <button onClick={load} disabled={loading} style={{ padding:'5px 14px', fontSize:11, borderRadius:999, border:`1px solid ${C.accentBd}`, background:C.accentBg, color:C.accent, cursor:'pointer', opacity:loading?.4:1 }}>
+            <button onClick={load} disabled={loading} style={{ padding:'5px 14px', fontSize:11, borderRadius:999, border:`1px solid ${C.accentBd}`, background:C.accentBg, color:C.accent, cursor:'pointer', opacity:loading?0.4:1 }}>
               {loading ? 'Actualizando…' : '↻ Actualizar'}
             </button>
           </div>
         </div>
 
-        {/* ── Tabs ── */}
+        {/* Tabs */}
         <div style={{ display:'flex', gap:6, marginBottom:16 }}>
-          <NavTab label="📊 Producto"  active={tab==='producto'} onClick={()=>setTab('producto')} />
-          <NavTab label="👥 Usuarios"  active={tab==='usuarios'} onClick={()=>setTab('usuarios')} />
+          <NavTab label="📊 Producto" active={tab==='producto'} onClick={()=>setTab('producto')} />
+          <NavTab label="👥 Usuarios" active={tab==='usuarios'} onClick={()=>setTab('usuarios')} />
         </div>
 
-        {/* ══════════════════════════════════════════
-            TAB PRODUCTO
-        ══════════════════════════════════════════ */}
+        {/* ── TAB PRODUCTO ── */}
         {tab === 'producto' && <>
-
-          {/* KPIs */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
             <Box>
               <Label>Usos hoy</Label>
@@ -178,7 +169,6 @@ export default function DashboardPage() {
             </Box>
           </div>
 
-          {/* Chart + Sentimiento */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 230px', gap:8, marginBottom:10 }}>
             <Box>
               <Label>Actividad diaria — análisis completados por día</Label>
@@ -189,7 +179,7 @@ export default function DashboardPage() {
                   return (
                     <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3, height:'100%', justifyContent:'flex-end' }}>
                       {day.count > 0 && <span style={{ fontSize:10, color:C.text3 }}>{day.count}</span>}
-                      <div style={{ width:'100%', background:'rgba(108,127,255,.25)', border:`1px solid rgba(108,127,255,.5)`, borderRadius:3, height:`${h}%`, transition:'height .4s' }} title={`${day.count} análisis`} />
+                      <div style={{ width:'100%', background:'rgba(108,127,255,.25)', border:'1px solid rgba(108,127,255,.5)', borderRadius:3, height:`${h}%`, transition:'height .4s' }} title={`${day.count} análisis`} />
                       <span style={{ fontSize:10, color:C.text3 }}>{day.label}</span>
                     </div>
                   )
@@ -199,11 +189,11 @@ export default function DashboardPage() {
 
             <Box>
               <Label>Sentimiento del mercado</Label>
-              <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>Resultado de los análisis: qué tendencia mostró cada acción analizada</p>
+              <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>Resultado de los análisis completados esta semana</p>
               {[
                 { key:'alcista', label:'Alcista', color:C.green,  hint:'señal de compra' },
-                { key:'neutral', label:'Neutral',  color:C.amber, hint:'esperar' },
-                { key:'bajista', label:'Bajista',  color:C.red,   hint:'señal de venta' },
+                { key:'neutral', label:'Neutral', color:C.amber,  hint:'esperar' },
+                { key:'bajista', label:'Bajista', color:C.red,    hint:'señal de venta' },
               ].map(({ key, label, color, hint }) => {
                 const count = d.trendCounts?.[key] || 0
                 const pct   = Math.round(count/totalTrend*100)
@@ -234,12 +224,11 @@ export default function DashboardPage() {
             </Box>
           </div>
 
-          {/* Top tickers + Recent */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
             <Box>
               <Label>Acciones más analizadas — 7 días</Label>
               <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>Las que más buscaron tus usuarios. Usalas para elegir qué publicar en redes.</p>
-              <div style={{ display:'grid', gridTemplateColumns:'16px 48px 1fr 36px 32px', gap:'0 6px', alignItems:'center', marginBottom:4 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'16px 48px 1fr 36px 32px', gap:'0 6px', alignItems:'center', marginBottom:6 }}>
                 <span style={{ fontSize:9, color:C.text3 }}>#</span>
                 <span style={{ fontSize:9, color:C.text3 }}>Ticker</span>
                 <span />
@@ -247,7 +236,7 @@ export default function DashboardPage() {
                 <span style={{ fontSize:9, color:C.accent, textAlign:'right' }}>Score</span>
               </div>
               {(d.topTickers||[]).map((t,i) => (
-                <div key={t.name} style={{ display:'grid', gridTemplateColumns:'16px 48px 1fr 36px 32px', gap:'0 6px', alignItems:'center', marginBottom:4 }}>
+                <div key={t.name} style={{ display:'grid', gridTemplateColumns:'16px 48px 1fr 36px 32px', gap:'0 6px', alignItems:'center', marginBottom:5 }}>
                   <span style={{ fontSize:10, color:C.text3 }}>{i+1}</span>
                   <span style={{ fontSize:13, fontWeight:500, color:C.text }}>{t.name}</span>
                   <div style={{ height:4, background:C.bg3, borderRadius:2, overflow:'hidden' }}>
@@ -264,7 +253,7 @@ export default function DashboardPage() {
 
             <Box>
               <Label>Análisis recientes</Label>
-              <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>Últimas búsquedas completadas. Score = tendencia de 0 (muy bajista) a 100 (muy alcista).</p>
+              <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>Score = tendencia de 0 (muy bajista) a 100 (muy alcista). Verde ≥65, rojo ≤35.</p>
               {(d.recent||[]).slice(0,10).map((e,i) => (
                 <div key={i} style={{ display:'grid', gridTemplateColumns:'44px 32px 70px 1fr', gap:8, alignItems:'center', fontSize:12, padding:'4px 0', borderBottom:`1px solid ${C.border}` }}>
                   <span style={{ fontWeight:500 }}>{e.ticker}</span>
@@ -275,27 +264,19 @@ export default function DashboardPage() {
                   </span>
                 </div>
               ))}
-              {(!d.recent || d.recent.length === 0) && <p style={{ fontSize:12, color:C.text3 }}>Sin análisis aún. Buscá un ticker para ver datos aquí.</p>}
+              {(!d.recent || d.recent.length === 0) && <p style={{ fontSize:12, color:C.text3 }}>Sin análisis aún.</p>}
             </Box>
           </div>
 
-          {/* Insight box */}
           <InsightBox
-            icon="💡"
-            title="Qué hacer con estos datos ahora"
-            color={C.accent}
-            bg={C.accentBg}
-            border={C.accentBd}
+            icon="💡" title="Qué hacer con estos datos ahora"
+            color={C.accent} bg={C.accentBg} border={C.accentBd}
             body={`Las acciones del top son tus mejores ideas de contenido para redes. Si AAPL aparece 18 veces, publicá un análisis de AAPL esta semana — ya sabés que tu audiencia la quiere ver. El score promedio (${d.avgScore ?? 0}/100) te dice si el mercado está en modo optimista o defensivo esta semana.`}
           />
         </>}
 
-        {/* ══════════════════════════════════════════
-            TAB USUARIOS
-        ══════════════════════════════════════════ */}
+        {/* ── TAB USUARIOS ── */}
         {tab === 'usuarios' && <>
-
-          {/* KPIs usuarios */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
             <Box>
               <Label>Usuarios únicos (30 días)</Label>
@@ -319,16 +300,15 @@ export default function DashboardPage() {
             </Box>
           </div>
 
-          {/* Frecuencia + Power users */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
             <Box>
               <Label>Frecuencia de uso — análisis por usuario</Label>
               <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>Cuántos usuarios usaron la app 1 vez, 2-4 veces, etc. Los de 5+ son tu audiencia pagadora.</p>
               {[
-                { key:'1',   label:'1 análisis',    color:C.text3,  hint:'probaron y no volvieron' },
-                { key:'2-4', label:'2 a 4 análisis', color:C.amber, hint:'interesados, aún no enganchados' },
-                { key:'5-9', label:'5 a 9 análisis', color:C.accent, hint:'comprometidos — mostrales el Pro' },
-                { key:'10+', label:'10+ análisis',   color:C.green,  hint:'power users — van a pagar' },
+                { key:'1',   label:'1 análisis',     color:C.text3,  hint:'probaron y no volvieron' },
+                { key:'2-4', label:'2 a 4 análisis',  color:C.amber,  hint:'interesados, aún no enganchados' },
+                { key:'5-9', label:'5 a 9 análisis',  color:C.accent, hint:'comprometidos — mostrales el Pro' },
+                { key:'10+', label:'10+ análisis',    color:C.green,  hint:'power users — van a pagar' },
               ].map(({ key, label, color, hint }) => {
                 const count = u.freqBuckets?.[key] || 0
                 return (
@@ -346,31 +326,25 @@ export default function DashboardPage() {
               <div style={{ marginTop:14, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                 <div style={{ background:C.accentBg, border:`1px solid ${C.accentBd}`, borderRadius:6, padding:'8px 10px', textAlign:'center' }}>
                   <p style={{ fontSize:18, fontWeight:500, color:C.accent }}>{u.avgPerUser ?? '—'}</p>
-                  <p style={{ fontSize:10, color:C.text3 }}>Análisis por usuario</p>
-                  <p style={{ fontSize:9, color:C.text3 }}>promedio</p>
+                  <p style={{ fontSize:10, color:C.text3 }}>Análisis por usuario promedio</p>
                 </div>
                 <div style={{ background:C.greenBg, border:`1px solid ${C.greenBd}`, borderRadius:6, padding:'8px 10px', textAlign:'center' }}>
                   <p style={{ fontSize:18, fontWeight:500, color:C.green }}>{u.maxPerUser ?? '—'}</p>
                   <p style={{ fontSize:10, color:C.text3 }}>Máximo de 1 usuario</p>
-                  <p style={{ fontSize:9, color:C.text3 }}>el más activo</p>
                 </div>
               </div>
             </Box>
 
-            {/* Power users detail */}
             <Box>
               <Label>Power users — quiénes son</Label>
               <p style={{ fontSize:11, color:C.text3, marginBottom:10 }}>
-                ID anonimizado (primeros 8 caracteres de la cookie). Para saber exactamente quién es, necesitás auth implementado.
-                Las acciones que cada uno buscó son su perfil de interés.
+                ID anonimizado (primeros 8 caracteres de la cookie). Las acciones que buscó cada uno son su perfil de interés.
               </p>
               {(u.topByVolume||[]).map((usr,i) => (
                 <div key={i} style={{ background:C.bg3, borderRadius:7, padding:'8px 10px', marginBottom:6 }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
                     <span style={{ fontFamily:'monospace', fontSize:11, color:C.text2 }}>{usr.id}</span>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <Pill label={`${usr.analyses} análisis`} bg={C.accentBg} color={C.accent} border={C.accentBd} />
-                    </div>
+                    <Pill label={`${usr.analyses} análisis`} bg={C.accentBg} color={C.accent} border={C.accentBd} />
                   </div>
                   <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:4 }}>
                     {(usr.tickers||[]).map(t => (
@@ -383,16 +357,15 @@ export default function DashboardPage() {
                 </div>
               ))}
               {(!u.topByVolume || u.topByVolume.length === 0) && (
-                <p style={{ fontSize:12, color:C.text3 }}>Sin usuarios con historial aún. Buscá varios tickers para aparecer aquí.</p>
+                <p style={{ fontSize:12, color:C.text3 }}>Sin usuarios con historial aún.</p>
               )}
             </Box>
           </div>
 
-          {/* Co-ocurrencia */}
           <Box style={{ marginBottom:10 }}>
             <Label>Pares de acciones — qué comparan tus usuarios</Label>
             <p style={{ fontSize:11, color:C.text3, marginBottom:12 }}>
-              Cuando el mismo usuario busca dos acciones en la misma sesión, ese par aparece aquí. Es la base del motor de recomendaciones: "si buscaste X, mirá también Y".
+              Cuando el mismo usuario busca dos acciones, ese par aparece aquí. Base del motor de recomendaciones: "si buscaste X, mirá también Y".
             </p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
               {(u.topPairs||[]).map((pair,i) => (
@@ -408,33 +381,25 @@ export default function DashboardPage() {
               ))}
             </div>
             {(!u.topPairs || u.topPairs.length === 0) && (
-              <p style={{ fontSize:12, color:C.text3 }}>Sin pares aún. Necesitás usuarios que busquen más de una acción por sesión.</p>
+              <p style={{ fontSize:12, color:C.text3 }}>Sin pares aún. Necesitás usuarios que busquen más de una acción.</p>
             )}
           </Box>
 
-          {/* Insights de usuarios */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
             <InsightBox
-              icon="🎯"
-              title="Cuándo activar el paywall"
-              color={C.accent}
-              bg={C.accentBg}
-              border={C.accentBd}
-              body={`Tenés ${u.powerUsers ?? 0} usuarios con 5+ análisis. Esos son tus compradores naturales del plan Pro. Activá el límite de 3/día cuando llegues a 10+ power users — antes de eso es prematuro y puede frenar el crecimiento.`}
+              icon="🎯" title="Cuándo activar el paywall"
+              color={C.accent} bg={C.accentBg} border={C.accentBd}
+              body={`Tenés ${u.powerUsers ?? 0} usuarios con 5+ análisis. Esos son tus compradores naturales del plan Pro. Activá el límite de 3/día cuando llegues a 10+ power users — antes es prematuro y puede frenar el crecimiento.`}
             />
             <InsightBox
-              icon="📣"
-              title="Estrategia de contenido con co-ocurrencia"
-              color={C.purple}
-              bg={C.purpleBg}
-              border={C.purpleBd}
-              body={`Los pares más frecuentes son tus mejores ideas de posts comparativos: "MELI vs TSLA: cuál conviene ahora". Ese formato genera engagement porque tus usuarios ya están comparando esas dos en StockPulse.`}
+              icon="📣" title="Estrategia de contenido con co-ocurrencia"
+              color={C.purple} bg={C.purpleBg} border={C.purpleBd}
+              body="Los pares más frecuentes son tus mejores ideas de posts comparativos: 'MELI vs TSLA: cuál conviene ahora'. Ese formato genera engagement porque tus usuarios ya están comparando esas dos en StockPulse."
             />
           </div>
         </>}
 
       </div>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
     </div>
   )
 }

@@ -39,7 +39,6 @@ export async function GET() {
 
   const now = new Date()
 
-  // Una sola query trae todo — más eficiente que dos calls
   const result = await hogql(`
     SELECT
       event,
@@ -53,10 +52,8 @@ export async function GET() {
     LIMIT 1000
   `)
 
-  // HogQL devuelve { results: [[event, distinct_id, properties_str, timestamp], ...], columns: [...] }
   const rows = result?.results || []
 
-  // Parsear cada fila — properties viene como string JSON
   const events = rows.map(row => {
     let props = {}
     try { props = typeof row[2] === 'string' ? JSON.parse(row[2]) : (row[2] || {}) } catch {}
@@ -72,7 +69,6 @@ export async function GET() {
   const todayStr  = now.toDateString()
   const ago7      = new Date(now - 7 * 24 * 60 * 60 * 1000)
 
-  // ── Métricas de producto ─────────────────────────────────
   const tickerCounts = {}
   const tickerScores = {}
   const trendCounts  = { alcista: 0, bajista: 0, neutral: 0 }
@@ -86,8 +82,8 @@ export async function GET() {
   }
 
   for (const e of completed) {
-    const p  = e.properties
-    const ts = new Date(e.timestamp)
+    const p   = e.properties
+    const ts  = new Date(e.timestamp)
     const day = ts.toDateString()
 
     if (day === todayStr) todayCount++
@@ -123,7 +119,6 @@ export async function GET() {
       return { name, count, avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b) / scores.length) : null }
     })
 
-  // ── Inteligencia de usuarios ─────────────────────────────
   const userMap = {}
   for (const e of events) {
     const uid    = e.distinct_id
@@ -171,7 +166,7 @@ export async function GET() {
       if (a < b) pairs.push({ a, b, count })
   const topPairs = pairs.sort((x, y) => y.count - x.count).slice(0, 8)
 
-  return NextResponse.json({
+  const payload = {
     today: todayCount, sevenDays: sevenDayCount, thirtyDays: completed.length,
     uniqueTickers: Object.keys(tickerCounts).length,
     trendCounts, scoreBuckets, topTickers,
@@ -195,8 +190,11 @@ export async function GET() {
         lastSeen: u.lastSeen,
       })),
     },
-    // Debug: cuántas filas trajo Posthog (sacar en producción)
     _debug: { totalRows: rows.length, completedRows: completed.length },
     generatedAt: now.toISOString(),
+  }
+
+  return NextResponse.json(payload, {
+    headers: { 'Cache-Control': 'no-store' },
   })
 }
