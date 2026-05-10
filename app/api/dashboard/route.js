@@ -1,9 +1,9 @@
 // app/api/dashboard/route.js
-// Env vars: POSTHOG_PERSONAL_API_KEY · POSTHOG_PROJECT_ID
+// Env var necesaria: POSTHOG_PERSONAL_API_KEY (solo esta)
 import { NextResponse } from 'next/server'
 
-const HOST    = 'https://app.posthog.com'
-const PROJECT = process.env.POSTHOG_PROJECT_ID
+const HOST    = 'https://eu.posthog.com'
+const PROJECT = '169311'
 const KEY     = process.env.POSTHOG_PERSONAL_API_KEY
 
 export const revalidate = 60
@@ -18,8 +18,8 @@ async function phFetch(path) {
 }
 
 export async function GET() {
-  if (!PROJECT || !KEY)
-    return NextResponse.json({ error: 'Missing Posthog env vars' }, { status: 500 })
+  if (!KEY)
+    return NextResponse.json({ error: 'Missing POSTHOG_PERSONAL_API_KEY' }, { status: 500 })
 
   const now   = new Date()
   const ago7  = new Date(now - 7  * 24 * 60 * 60 * 1000).toISOString()
@@ -116,7 +116,6 @@ export async function GET() {
     else                       freqBuckets['10+']++
   }
 
-  // Co-ocurrencia: tickers que el mismo usuario busca juntos
   const coOccurrence = {}
   for (const u of users) {
     if (u.tickers.length < 2) continue
@@ -152,11 +151,11 @@ export async function GET() {
       maxPerUser: users.reduce((m, u) => Math.max(m, u.analyses), 0),
       freqBuckets, topPairs,
       topByVolume: users.sort((a, b) => b.analyses - a.analyses).slice(0, 5).map(u => ({
-        id:        u.id.slice(0, 8) + '…',
-        analyses:  u.analyses,
-        searches:  u.searches,
-        tickers:   u.tickers.slice(0, 5),
-        lastSeen:  u.lastSeen,
+        id:       u.id.slice(0, 8) + '…',
+        analyses: u.analyses,
+        searches: u.searches,
+        tickers:  u.tickers.slice(0, 5),
+        lastSeen: u.lastSeen,
       })),
     },
     generatedAt: now.toISOString(),
