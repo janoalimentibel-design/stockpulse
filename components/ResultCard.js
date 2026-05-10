@@ -140,6 +140,16 @@ function FundIndicatorRow({ ind }) {
   )
 }
 
+// Formato LATAM: "5 ago 2026" en vez de ISO "2026-08-05"
+function formatDate(dateStr) {
+  if (!dateStr) return dateStr
+  try {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+    return `${day} ${months[month - 1]} ${year}`
+  } catch { return dateStr }
+}
+
 // FIX 5 — Earnings badge: muestra próximo reporte o resultado reciente
 function EarningsBadge({ nextEarningsDate, nextEarningsDays, lastEarningsBeat }) {
   if (!nextEarningsDate) return null
@@ -151,14 +161,14 @@ function EarningsBadge({ nextEarningsDate, nextEarningsDays, lastEarningsBeat })
   let bg, border, color, text
   if (isClose) {
     bg = 'var(--amber-bg)'; border = 'var(--amber-border)'; color = 'var(--amber)'
-    text = `⚡ Earnings en ${nextEarningsDays} días · ${nextEarningsDate}`
+    text = `⚡ Earnings en ${nextEarningsDays} días · ${formatDate(nextEarningsDate)}`
   } else if (isPast) {
     const beat = lastEarningsBeat === true ? ' · Beat ✓' : lastEarningsBeat === false ? ' · Miss ✗' : ''
     bg = 'var(--bg3)'; border = 'var(--border)'; color = 'var(--text2)'
-    text = `Reportó hace ${Math.abs(nextEarningsDays)} días · ${nextEarningsDate}${beat}`
+    text = `Reportó hace ${Math.abs(nextEarningsDays)} días · ${formatDate(nextEarningsDate)}${beat}`
   } else if (isFuture) {
     bg = 'var(--bg3)'; border = 'var(--border)'; color = 'var(--text3)'
-    text = `Próximo earnings: ${nextEarningsDate}`
+    text = `Próximo earnings: ${formatDate(nextEarningsDate)}`
   } else {
     return null
   }
