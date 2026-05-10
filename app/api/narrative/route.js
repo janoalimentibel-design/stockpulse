@@ -5,8 +5,11 @@ import { checkRateLimit, getIP } from '@/lib/rate-limit'
 
 const CACHE_TTL_HOURS = 4
 
+// Si hubo earnings en los últimos N días, bypassear caché siempre
+const EARNINGS_CACHE_BYPASS_DAYS = 7
+
 async function getCached(ticker) {
-  if (!supabase) return null  // supabase puede ser null si las env vars no están
+  if (!supabase) return null
   try {
     const { data, error } = await supabase
       .from('narrative_cache')
@@ -26,7 +29,7 @@ async function getCached(ticker) {
 }
 
 async function setCached(ticker, payload) {
-  if (!supabase) return  // supabase puede ser null
+  if (!supabase) return
   try {
     await supabase.from('narrative_cache').upsert({ ticker, data: payload, created_at: new Date().toISOString() })
   } catch (e) {
@@ -34,7 +37,19 @@ async function setCached(ticker, payload) {
   }
 }
 
-// Sanitiza output de Claude: quita cite tags, artefactos, y saltos raros
+// Devuelve true si la fecha ISO (YYYY-MM-DD) está dentro de los últimos N días
+function isWithinDays(dateStr, days) {
+  if (!dateStr) return false
+  try {
+    const d = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now - d
+    return diffMs >= 0 && diffMs <= days * 24 * 60 * 60 * 1000
+  } catch {
+    return false
+  }
+}
+
 function sanitizeText(text) {
   if (!text || typeof text !== 'string') return text
   return text
@@ -60,17 +75,12 @@ function sanitizeNarrative(obj) {
   return sanitized
 }
 
-/**
- * Limpia strings que van al prompt para prevenir prompt injection.
- * Elimina saltos de línea (rompen la estructura del prompt), limita longitud,
- * y quita los separadores "━" que usamos para estructurar el prompt.
- */
 function sanitizePromptInput(str, maxLen = 120) {
   if (!str || typeof str !== 'string') return ''
   return str
-    .replace(/[\n\r]/g, ' ')   // saltos de línea rompen la estructura del prompt
-    .replace(/━/g, '-')         // nuestro separador de secciones
-    .replace(/[<>]/g, '')       // HTML básico
+    .replace(/[\n\r]/g, ' ')
+    .replace(/━/g, '-')
+    .replace(/[<>]/g, '')
     .slice(0, maxLen)
     .trim()
 }
@@ -142,7 +152,6 @@ function buildPanelContext(panelData) {
 
 export async function POST(request) {
   try {
-    // Rate limiting — 10 análisis por IP por hora
     const ip = getIP(request)
     const { allowed, retryAfter } = await checkRateLimit(ip, 'narrative')
     if (!allowed) {
@@ -164,18 +173,16 @@ export async function POST(request) {
       ma50, ma200, rsi, macd, macdSignal, relVol, change1m, high52, low52,
       fundamentals,
       nextEarningsDate, nextEarningsDays,
+      lastEarningsDate, lastEarningsBeat,   // FIX: antes no se destructuraban → Claude nunca los recibía
       panelData,
     } = body.data
 
-    // Validar ticker — mismo filtro que en market-data
     const ticker = validateTicker(rawTicker)
     if (!ticker) return Response.json({ error: 'Ticker inválido.' }, { status: 400 })
 
-    // Sanitizar campos de texto libre que van al prompt (anti prompt injection)
     const companyName = sanitizePromptInput(rawCompanyName, 80) || ticker
     const sector      = sanitizePromptInput(rawSector, 60) || null
 
-    // Sanitizar títulos y publishers de noticias
     const news = Array.isArray(rawNews)
       ? rawNews.slice(0, 5).map(n => ({
           ...n,
@@ -185,12 +192,21 @@ export async function POST(request) {
       : []
 
     const cacheKey = ticker
-    const cached = await getCached(cacheKey)
-    if (cached) {
-      console.log(`[narrative] Cache HIT (Supabase): ${cacheKey}`)
-      return Response.json(cached)
+
+    // FIX: si hubo earnings en los últimos 7 días, bypassear caché siempre.
+    // Así la narrativa siempre refleja el resultado real más reciente.
+    const recentEarnings = isWithinDays(lastEarningsDate, EARNINGS_CACHE_BYPASS_DAYS)
+    if (recentEarnings) {
+      console.log(`[narrative] Cache BYPASS: ${ticker} reportó earnings hace menos de ${EARNINGS_CACHE_BYPASS_DAYS} días (${lastEarningsDate})`)
+      await supabase?.from('narrative_cache').delete().eq('ticker', ticker).catch(() => {})
+    } else {
+      const cached = await getCached(cacheKey)
+      if (cached) {
+        console.log(`[narrative] Cache HIT (Supabase): ${cacheKey}`)
+        return Response.json(cached)
+      }
+      console.log(`[narrative] Cache MISS: ${cacheKey} — llamando a Claude`)
     }
-    console.log(`[narrative] Cache MISS: ${cacheKey} — llamando a Claude`)
 
     const today = new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -225,14 +241,25 @@ export async function POST(request) {
       fund.de        != null ? `D/E: ${fund.de}` : null,
     ].filter(Boolean).join(' · ') || 'No disponible desde Polygon en este ticker'
 
+    // FIX: earningsContext ahora incluye el resultado real del último earnings (beat/miss)
+    // cuando es reciente — info clave para explicar movimientos de precio post-earnings.
     let earningsContext = ''
-    if (nextEarningsDate) {
-      if (nextEarningsDays != null && nextEarningsDays >= 0 && nextEarningsDays <= 14) {
+    if (lastEarningsDate && isWithinDays(lastEarningsDate, 30)) {
+      const beatLabel = lastEarningsBeat === true
+        ? 'SUPERÓ estimados (beat)'
+        : lastEarningsBeat === false
+          ? 'NO alcanzó estimados (miss)'
+          : 'resultado vs estimados no disponible'
+      const daysAgo = Math.round((Date.now() - new Date(lastEarningsDate).getTime()) / (1000 * 60 * 60 * 24))
+      earningsContext = `⚠️ EARNINGS RECIENTE: reportó el ${lastEarningsDate} (hace ${daysAgo} días) — ${beatLabel}. OBLIGATORIO: mencioná este resultado y su impacto en el precio en analyst_summary.`
+      if (nextEarningsDate && nextEarningsDays != null && nextEarningsDays > 0) {
+        earningsContext += ` Próximo earnings: ${nextEarningsDate} (en ${nextEarningsDays} días).`
+      }
+    } else if (nextEarningsDate && nextEarningsDays != null && nextEarningsDays > 0) {
+      if (nextEarningsDays <= 14) {
         earningsContext = `⚠️ PRÓXIMO EARNINGS: ${nextEarningsDate} (en ${nextEarningsDays} días) — MENCIONAR OBLIGATORIAMENTE en analyst_summary`
-      } else if (nextEarningsDays != null && nextEarningsDays < 0 && nextEarningsDays >= -7) {
-        earningsContext = `Reportó recientemente: ${nextEarningsDate} (hace ${Math.abs(nextEarningsDays)} días) — mencionar si hay datos relevantes`
       } else {
-        earningsContext = `Próximo earnings: ${nextEarningsDate}`
+        earningsContext = `Próximo earnings: ${nextEarningsDate} (en ${nextEarningsDays} días)`
       }
     }
 
@@ -255,8 +282,8 @@ Momentum 1 mes: ${change1mStr}
 ━━━ FUNDAMENTALES (desde Polygon — NO inventar ni completar) ━━━
 ${fundContext}
 
-━━━ CALENDARIO ━━━
-${earningsContext || `Sin datos de earnings disponibles. Usá tu conocimiento actualizado: ¿cuándo reporta ${ticker} sus próximos resultados? ¿Reportó recientemente (últimas 4 semanas)? Si reportó recientemente, mencioná EPS real vs estimado. Si el próximo earnings es en menos de 14 días, es OBLIGATORIO mencionarlo en analyst_summary como catalizador clave. Si no tenés certeza de la fecha exacta, indicá el mes aproximado.`}
+━━━ CALENDARIO DE EARNINGS ━━━
+${earningsContext || `Sin datos de earnings disponibles. Usá tu conocimiento actualizado: ¿reportó recientemente (últimas 4 semanas)? Si reportó, mencioná EPS real vs estimado. Si hay earnings próximos en menos de 14 días, es OBLIGATORIO mencionarlo en analyst_summary.`}
 
 ${panelVeredicto}
 
@@ -271,10 +298,11 @@ ${newsContext || `Sin noticias indexadas en Polygon para este período. Usá tu 
 5. Si RSI > 70, SIEMPRE mencioná el riesgo de sobrecompra o posible corrección.
 6. Si el veredicto del panel es Bajista, NO uses tono de compra en la narrativa.
 7. Si hay earnings en los próximos 14 días, MENCIONARLO en analyst_summary.
-8. Para noticias: si no hay en 7 días, buscá en el período disponible. Nunca escribas "sin noticias específicas hoy" — si no encontrás nada, decí "Sin catalizadores específicos en las últimas semanas."
-9. Tono: español neutro profesional pero accesible, sin jerga técnica excesiva.
-10. Preferí ser breve y preciso antes que extenso e inventado.
-11. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. No uses tu conocimiento previo para citar un P/E — puede estar desactualizado o ser incorrecto. Escribí "valuación no disponible" si no hay datos de P/E.
+8. Si hubo earnings reciente con miss/beat, EXPLICAR el impacto en el precio en analyst_summary — es la información más relevante del momento.
+9. Para noticias: si no hay en 7 días, buscá en el período disponible. Nunca escribas "sin noticias específicas hoy" — si no encontrás nada, decí "Sin catalizadores específicos en las últimas semanas."
+10. Tono: español neutro profesional pero accesible, sin jerga técnica excesiva.
+11. Preferí ser breve y preciso antes que extenso e inventado.
+12. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. Escribí "valuación no disponible" si no hay datos de P/E.
 
 ━━━ FORMATO DE RESPUESTA ━━━
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
@@ -282,7 +310,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
 {
   "technical_summary": "2-3 oraciones sobre situación técnica actual. Mencionar cruce de medias, RSI y momentum. Si Death Cross, dejarlo claro.",
   "fundamental_summary": "2-3 oraciones sobre fundamentales y valuación usando SOLO los datos provistos. Si hay pocos datos, ser breve.",
-  "analyst_summary": "2-3 oraciones integrando noticias recientes y contexto de mercado. Si hay earnings próximos, mencionarlos explícitamente.",
+  "analyst_summary": "2-3 oraciones integrando resultado de earnings reciente si aplica, noticias y contexto de mercado. Si hubo miss/beat reciente, explicar su impacto en el precio.",
   "key_opportunity": "Una oración concreta y específica sobre la oportunidad principal.",
   "key_risk": "Una oración concreta y específica sobre el riesgo principal.",
   "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte",
@@ -305,7 +333,6 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        // Loguear detalle interno, exponer solo mensaje genérico
         const detail = err.error?.message || `HTTP ${res.status}`
         console.error('[narrative] Error Anthropic:', detail)
         throw new Error('Error al generar análisis narrativo.')
