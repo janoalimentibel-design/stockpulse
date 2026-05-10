@@ -23,15 +23,18 @@ export async function GET() {
 
     const [gData, lData] = await Promise.all([gRes.json(), lRes.json()])
 
+    const getPrice = (t) => t.day?.c || t.prevDay?.c || t.lastTrade?.p || 0
+
     const fmt = (t) => ({
       ticker: t.ticker,
-      price: +(t.day?.c ?? t.prevDay?.c ?? 0).toFixed(2),
+      price: +getPrice(t).toFixed(2),
       change: +(t.todaysChangePerc ?? 0).toFixed(2),
     })
 
     // Filtrar penny stocks (<$5) y tickers con punto (ADRs/ETFs raros)
+    // getPrice usa prevDay como fallback para weekends/after-hours donde day.c = 0
     const filter = (arr) => (arr || [])
-      .filter(t => (t.day?.c ?? 0) > 5 && !t.ticker.includes('.') && t.ticker.length <= 5)
+      .filter(t => getPrice(t) > 5 && !t.ticker.includes('.') && t.ticker.length <= 5)
       .slice(0, 10)
       .map(fmt)
 
