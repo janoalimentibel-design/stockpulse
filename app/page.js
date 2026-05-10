@@ -46,6 +46,8 @@ export default function Home() {
     const t = (searchTicker || ticker).toUpperCase().trim()
     if (!t) return
 
+    posthog?.capture('ticker_searched', { ticker: t })
+
     setLoading(true)
     setError('')
     setMarketData(null)
