@@ -4,8 +4,6 @@ import { validateTicker } from '@/lib/validate'
 import { checkRateLimit, getIP } from '@/lib/rate-limit'
 
 const CACHE_TTL_HOURS = 4
-
-// Si hubo earnings en los últimos N días, bypassear caché siempre
 const EARNINGS_CACHE_BYPASS_DAYS = 7
 
 async function getCached(ticker) {
@@ -37,7 +35,6 @@ async function setCached(ticker, payload) {
   }
 }
 
-// Devuelve true si la fecha ISO (YYYY-MM-DD) está dentro de los últimos N días
 function isWithinDays(dateStr, days) {
   if (!dateStr) return false
   try {
@@ -47,6 +44,18 @@ function isWithinDays(dateStr, days) {
     return diffMs >= 0 && diffMs <= days * 24 * 60 * 60 * 1000
   } catch {
     return false
+  }
+}
+
+// Formatea fecha ISO a "5 ago 2026" (formato LATAM legible)
+function formatDate(dateStr) {
+  if (!dateStr) return dateStr
+  try {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+    return `${day} ${months[month - 1]} ${year}`
+  } catch {
+    return dateStr
   }
 }
 
@@ -91,52 +100,37 @@ function validateNarrative(narrative, panelData) {
   const fund = (narrative.fundamental_summary || '').toLowerCase()
   const analyst = (narrative.analyst_summary || '').toLowerCase()
   const allText = tech + ' ' + fund + ' ' + analyst
-
-  const { cruceMA, rsi, position52w, score, trend } = panelData
+  const { cruceMA, rsi, position52w, trend } = panelData
 
   if (cruceMA === 'Death Cross') {
     const alcistaPhrases = ['alcista de largo plazo', 'tendencia alcista de largo', 'long-term bullish', 'tendencia positiva de largo']
-    if (alcistaPhrases.some(p => allText.includes(p))) {
+    if (alcistaPhrases.some(p => allText.includes(p)))
       issues.push(`Death Cross activo pero la narrativa describe tendencia alcista de largo plazo`)
-    }
   }
-
   if (trend === 'Tendencia bajista') {
     const optimistaPhrases = ['señal de compra', 'excelente momento para comprar', 'fuerte oportunidad de compra']
-    if (optimistaPhrases.some(p => allText.includes(p))) {
+    if (optimistaPhrases.some(p => allText.includes(p)))
       issues.push(`Panel bajista pero narrativa tiene tono de compra`)
-    }
   }
-
   if (rsi != null && rsi > 70) {
     const mentionsRisk = allText.includes('sobrecompra') || allText.includes('corrección') ||
                          allText.includes('rsi') || allText.includes('sobrecomprado')
-    if (!mentionsRisk) {
-      issues.push(`RSI ${rsi} (sobrecompra) no se menciona en la narrativa`)
-    }
+    if (!mentionsRisk) issues.push(`RSI ${rsi} (sobrecompra) no se menciona en la narrativa`)
   }
-
   if (position52w != null && position52w < 25) {
     const strengthPhrases = ['cerca de máximos', 'fortaleza técnica', 'máximos históricos']
-    if (strengthPhrases.some(p => allText.includes(p))) {
+    if (strengthPhrases.some(p => allText.includes(p)))
       issues.push(`Precio en ${position52w}% del rango 52W pero narrativa menciona fortaleza o máximos`)
-    }
   }
-
   const { macd: macdVal, macdSignal: macdSigVal } = panelData
   if (macdVal != null && macdSigVal != null) {
-    const macdBearish = macdVal < macdSigVal
-    const macdBullish = macdVal > macdSigVal
     const bullishMomentumPhrases = ['momentum positivo', 'impulso alcista', 'momentum alcista', 'impulso positivo', 'momentum favorable']
     const bearishMomentumPhrases = ['presión bajista', 'momentum negativo', 'impulso bajista', 'presión vendedora', 'momentum desfavorable']
-    if (macdBearish && bullishMomentumPhrases.some(p => allText.includes(p))) {
+    if (macdVal < macdSigVal && bullishMomentumPhrases.some(p => allText.includes(p)))
       issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo`)
-    }
-    if (macdBullish && bearishMomentumPhrases.some(p => allText.includes(p))) {
+    if (macdVal > macdSigVal && bearishMomentumPhrases.some(p => allText.includes(p)))
       issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista`)
-    }
   }
-
   return issues
 }
 
@@ -173,7 +167,9 @@ export async function POST(request) {
       ma50, ma200, rsi, macd, macdSignal, relVol, change1m, high52, low52,
       fundamentals,
       nextEarningsDate, nextEarningsDays,
-      lastEarningsDate, lastEarningsBeat,   // FIX: antes no se destructuraban → Claude nunca los recibía
+      lastEarningsDate,
+      lastEarningsReportDate,  // fecha real del reporte (ej. "2026-05-07")
+      lastEarningsBeat,
       panelData,
     } = body.data
 
@@ -193,11 +189,12 @@ export async function POST(request) {
 
     const cacheKey = ticker
 
-    // FIX: si hubo earnings en los últimos 7 días, bypassear caché siempre.
-    // Así la narrativa siempre refleja el resultado real más reciente.
-    const recentEarnings = isWithinDays(lastEarningsDate, EARNINGS_CACHE_BYPASS_DAYS)
+    // Cache bypass: si reportó en los últimos 7 días, narrativa siempre fresh.
+    // Usar lastEarningsReportDate (fecha real del reporte desde calendario Finnhub),
+    // NO lastEarningsDate que es el período fiscal (ej. "2026-03-31").
+    const recentEarnings = isWithinDays(lastEarningsReportDate, EARNINGS_CACHE_BYPASS_DAYS)
     if (recentEarnings) {
-      console.log(`[narrative] Cache BYPASS: ${ticker} reportó earnings hace menos de ${EARNINGS_CACHE_BYPASS_DAYS} días (${lastEarningsDate})`)
+      console.log(`[narrative] Cache BYPASS: ${ticker} reportó el ${lastEarningsReportDate} (hace menos de ${EARNINGS_CACHE_BYPASS_DAYS} días)`)
       await supabase?.from('narrative_cache').delete().eq('ticker', ticker).catch(() => {})
     } else {
       const cached = await getCached(cacheKey)
@@ -241,26 +238,24 @@ export async function POST(request) {
       fund.de        != null ? `D/E: ${fund.de}` : null,
     ].filter(Boolean).join(' · ') || 'No disponible desde Polygon en este ticker'
 
-    // FIX: earningsContext ahora incluye el resultado real del último earnings (beat/miss)
-    // cuando es reciente — info clave para explicar movimientos de precio post-earnings.
+    // Contexto de earnings: prioridad al reporte reciente con beat/miss
     let earningsContext = ''
-    if (lastEarningsDate && isWithinDays(lastEarningsDate, 30)) {
+    const reportDateForContext = lastEarningsReportDate || lastEarningsDate
+    if (reportDateForContext && isWithinDays(reportDateForContext, 30)) {
       const beatLabel = lastEarningsBeat === true
         ? 'SUPERÓ estimados (beat)'
         : lastEarningsBeat === false
           ? 'NO alcanzó estimados (miss)'
           : 'resultado vs estimados no disponible'
-      const daysAgo = Math.round((Date.now() - new Date(lastEarningsDate).getTime()) / (1000 * 60 * 60 * 24))
-      earningsContext = `⚠️ EARNINGS RECIENTE: reportó el ${lastEarningsDate} (hace ${daysAgo} días) — ${beatLabel}. OBLIGATORIO: mencioná este resultado y su impacto en el precio en analyst_summary.`
+      const daysAgo = Math.round((Date.now() - new Date(reportDateForContext).getTime()) / (1000 * 60 * 60 * 24))
+      earningsContext = `⚠️ EARNINGS RECIENTE: reportó el ${formatDate(reportDateForContext)} (hace ${daysAgo} días) — ${beatLabel}. OBLIGATORIO: mencioná este resultado y su impacto en el precio en analyst_summary.`
       if (nextEarningsDate && nextEarningsDays != null && nextEarningsDays > 0) {
-        earningsContext += ` Próximo earnings: ${nextEarningsDate} (en ${nextEarningsDays} días).`
+        earningsContext += ` Próximo earnings: ${formatDate(nextEarningsDate)} (en ${nextEarningsDays} días).`
       }
     } else if (nextEarningsDate && nextEarningsDays != null && nextEarningsDays > 0) {
-      if (nextEarningsDays <= 14) {
-        earningsContext = `⚠️ PRÓXIMO EARNINGS: ${nextEarningsDate} (en ${nextEarningsDays} días) — MENCIONAR OBLIGATORIAMENTE en analyst_summary`
-      } else {
-        earningsContext = `Próximo earnings: ${nextEarningsDate} (en ${nextEarningsDays} días)`
-      }
+      earningsContext = nextEarningsDays <= 14
+        ? `⚠️ PRÓXIMO EARNINGS: ${formatDate(nextEarningsDate)} (en ${nextEarningsDays} días) — MENCIONAR OBLIGATORIAMENTE en analyst_summary`
+        : `Próximo earnings: ${formatDate(nextEarningsDate)} (en ${nextEarningsDays} días)`
     }
 
     const panelVeredicto = panelData
@@ -290,34 +285,34 @@ ${panelVeredicto}
 ━━━ NOTICIAS ÚLTIMOS 7-30 DÍAS (fuente: Polygon) ━━━
 ${newsContext || `Sin noticias indexadas en Polygon para este período. Usá tu conocimiento para mencionar upgrades/downgrades de analistas o noticias corporativas relevantes de las últimas 4 semanas para ${ticker}.`}
 
-━━━ REGLAS CRÍTICAS — LEER ANTES DE RESPONDER ━━━
-1. NUNCA inventes números. Solo podés citar cifras que estén explícitamente en los datos de arriba.
-2. Si un fundamental no está en los datos (ej. D/E no disponible), no lo menciones en la narrativa.
-3. NUNCA hagas comparaciones con competidores usando cifras específicas (ej. "Dell ROE 130%").
-4. Si hay Death Cross, NUNCA describas "tendencia alcista de largo plazo" — es una contradicción directa.
-5. Si RSI > 70, SIEMPRE mencioná el riesgo de sobrecompra o posible corrección.
-6. Si el veredicto del panel es Bajista, NO uses tono de compra en la narrativa.
-7. Si hay earnings en los próximos 14 días, MENCIONARLO en analyst_summary.
-8. Si hubo earnings reciente con miss/beat, EXPLICAR el impacto en el precio en analyst_summary — es la información más relevante del momento.
-9. Para noticias: si no hay en 7 días, buscá en el período disponible. Nunca escribas "sin noticias específicas hoy" — si no encontrás nada, decí "Sin catalizadores específicos en las últimas semanas."
-10. Tono: español neutro profesional pero accesible, sin jerga técnica excesiva.
-11. Preferí ser breve y preciso antes que extenso e inventado.
-12. P/E CRÍTICO: si P/E (TTM) no aparece explícitamente en la sección FUNDAMENTALES de arriba, NO lo menciones ni lo estimes. Escribí "valuación no disponible" si no hay datos de P/E.
+━━━ REGLAS CRÍTICAS ━━━
+1. NUNCA inventes números. Solo podés citar cifras explícitamente presentes en los datos de arriba.
+2. Si un fundamental no está en los datos, no lo menciones.
+3. NUNCA compares con competidores usando cifras específicas.
+4. Si hay Death Cross, NUNCA describas "tendencia alcista de largo plazo".
+5. Si RSI > 70, SIEMPRE mencioná el riesgo de sobrecompra.
+6. Si el panel es Bajista, NO uses tono de compra.
+7. Si hay earnings próximos en ≤14 días, MENCIONARLO en analyst_summary.
+8. Si hubo earnings reciente con miss/beat, EXPLICAR el impacto en el precio en analyst_summary.
+9. Si no hay noticias específicas, decí "Sin catalizadores específicos en las últimas semanas."
+10. Español neutro profesional pero accesible.
+11. Breve y preciso antes que extenso e inventado.
+12. P/E: si no aparece en FUNDAMENTALES, NO lo menciones ni estimes.
 
-━━━ FORMATO DE RESPUESTA ━━━
+━━━ FORMATO ━━━
 Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni después:
 
 {
-  "technical_summary": "2-3 oraciones sobre situación técnica actual. Mencionar cruce de medias, RSI y momentum. Si Death Cross, dejarlo claro.",
-  "fundamental_summary": "2-3 oraciones sobre fundamentales y valuación usando SOLO los datos provistos. Si hay pocos datos, ser breve.",
-  "analyst_summary": "2-3 oraciones integrando resultado de earnings reciente si aplica, noticias y contexto de mercado. Si hubo miss/beat reciente, explicar su impacto en el precio.",
-  "key_opportunity": "Una oración concreta y específica sobre la oportunidad principal.",
-  "key_risk": "Una oración concreta y específica sobre el riesgo principal.",
+  "technical_summary": "2-3 oraciones sobre situación técnica. Mencionar cruce de medias, RSI y momentum.",
+  "fundamental_summary": "2-3 oraciones sobre fundamentales usando SOLO los datos provistos.",
+  "analyst_summary": "2-3 oraciones. Si hubo earnings reciente con miss/beat, explicar el impacto en el precio.",
+  "key_opportunity": "Una oración concreta sobre la oportunidad principal.",
+  "key_risk": "Una oración concreta sobre el riesgo principal.",
   "analysts_consensus": "Compra fuerte|Compra|Mantener|Venta|Venta fuerte",
   "what_to_do": {
-    "tienes": "Una oración para quien ya tiene la acción — ¿holdear, tomar ganancias parciales, agregar posición?",
-    "entras": "Una oración para quien quiere entrar — ¿esperar corrección, entrar en cuotas, esperar confirmación?",
-    "sales": "Una oración para quien considera salir — ¿cuándo sería el momento, qué señal mirar?"
+    "tienes": "Una oración para quien ya tiene la acción.",
+    "entras": "Una oración para quien quiere entrar.",
+    "sales": "Una oración para quien considera salir."
   }
 }`
 
@@ -333,8 +328,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        const detail = err.error?.message || `HTTP ${res.status}`
-        console.error('[narrative] Error Anthropic:', detail)
+        console.error('[narrative] Error Anthropic:', err.error?.message || `HTTP ${res.status}`)
         throw new Error('Error al generar análisis narrativo.')
       }
       const anthropicData = await res.json()
@@ -355,30 +349,19 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         macd, macdSignal,
       }
       const issues = validateNarrative(parsed, validationInput)
-
       if (issues.length > 0) {
         console.warn(`[narrative] Validación fallida para ${ticker}:`, issues)
         const firstResponse = parsed
-
-        const retryPrompt = `${prompt}
-
-━━━ CORRECCIÓN NECESARIA ━━━
-Tu respuesta anterior tenía estas contradicciones con el panel de datos:
-${issues.map(i => `• ${i}`).join('\n')}
-
-Contexto del panel: ${buildPanelContext(validationInput)}
-
-Reescribí la narrativa corrigiendo estas contradicciones. La narrativa DEBE ser coherente con los datos del panel.`
-
+        const retryPrompt = `${prompt}\n\n━━━ CORRECCIÓN NECESARIA ━━━\nTu respuesta anterior tenía estas contradicciones:\n${issues.map(i => `• ${i}`).join('\n')}\n\nContexto del panel: ${buildPanelContext(validationInput)}\n\nReescribí la narrativa corrigiendo estas contradicciones.`
         try {
           parsed = await callClaude(retryPrompt)
           const issuesRetry = validateNarrative(parsed, validationInput)
           if (issuesRetry.length > 0) {
-            console.warn(`[narrative] Segundo intento también falló para ${ticker} — usando primera respuesta:`, issuesRetry)
+            console.warn(`[narrative] Segundo intento también falló — usando primera respuesta`)
             parsed = firstResponse
           }
         } catch (retryErr) {
-          console.error(`[narrative] Error en reintento para ${ticker}:`, retryErr.message)
+          console.error(`[narrative] Error en reintento:`, retryErr.message)
         }
       }
     }

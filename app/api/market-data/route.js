@@ -63,25 +63,20 @@ function calcFundamentals(financials, currentPrice) {
   try {
     const results = financials?.results
     if (!results?.length) return null
-
     const latest = results[0]
     const income = latest?.financials?.income_statement
     const balance = latest?.financials?.balance_sheet
-
     if (!income || !balance) return null
-
     const netIncome   = income?.net_income_loss?.value ?? null
     const revenue     = income?.revenues?.value ?? null
     const eps         = income?.basic_earnings_per_share?.value ?? null
     const totalEquity = balance?.equity?.value ?? null
-
     const longTermDebt        = balance?.long_term_debt?.value ?? 0
     const currentLongTermDebt = balance?.current_portion_of_long_term_debt?.value ?? 0
     const shortTermDebt       = balance?.short_term_debt?.value ?? 0
     const financialDebt       = longTermDebt + currentLongTermDebt + shortTermDebt
     const totalLiabilities    = balance?.liabilities?.value ?? null
     const debtForRatio        = financialDebt > 0 ? financialDebt : (totalLiabilities ?? 0)
-
     const de = debtForRatio && totalEquity && totalEquity > 0
       ? Math.round((debtForRatio / totalEquity) * 100) / 100 : null
     const netMargin = revenue && netIncome
@@ -90,7 +85,6 @@ function calcFundamentals(financials, currentPrice) {
       ? Math.round((netIncome / totalEquity) * 1000) / 10 : null
     const pe = currentPrice && eps && eps > 0
       ? Math.round((currentPrice / eps) * 10) / 10 : null
-
     let epsGrowth = null
     if (results.length >= 5 && eps != null) {
       const yearAgo = results[4]?.financials?.income_statement?.basic_earnings_per_share?.value ?? null
@@ -98,14 +92,13 @@ function calcFundamentals(financials, currentPrice) {
         epsGrowth = Math.round(((eps - yearAgo) / Math.abs(yearAgo)) * 1000) / 10
       }
     }
-
     return { netMargin, de, roe, pe, epsGrowth }
   } catch {
     return null
   }
 }
 
-// Returns null if the date is today or in the past — callers treat null as "no upcoming earnings"
+// Devuelve null si la fecha es hoy o pasada
 function calcEarningsDays(earningsDate) {
   if (!earningsDate) return null
   try {
@@ -114,13 +107,12 @@ function calcEarningsDays(earningsDate) {
     const eDate = new Date(earningsDate)
     eDate.setHours(0, 0, 0, 0)
     const days = Math.round((eDate - today) / (1000 * 60 * 60 * 24))
-    return days > 0 ? days : null  // FIX: descarta fechas pasadas o de hoy
+    return days > 0 ? days : null
   } catch {
     return null
   }
 }
 
-// Returns true only if the date string is strictly in the future (tomorrow or later)
 function isFutureDate(dateStr) {
   if (!dateStr) return false
   try {
@@ -138,11 +130,15 @@ async function fetchEarnings(ticker, finnhubKey) {
   if (!finnhubKey) return {}
 
   const today    = new Date().toISOString().split('T')[0]
-  const in90days = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const in90days = new Date(Date.now() + 90  * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const ago30days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  let nextEarningsDate = null, lastEarningsDate = null, lastEarningsBeat = null
+  let nextEarningsDate = null
+  let lastEarningsDate = null      // fecha fiscal del período (ej. "2026-03-31")
+  let lastEarningsReportDate = null // fecha real en que reportó (ej. "2026-05-07") — para el cache bypass
+  let lastEarningsBeat = null
 
-  // Próximos earnings (solo fechas futuras)
+  // 1 — Próximos earnings (solo fechas futuras)
   try {
     const calRes = await fetch(
       `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${today}&to=${in90days}&token=${finnhubKey}`,
@@ -155,7 +151,7 @@ async function fetchEarnings(ticker, finnhubKey) {
     }
   } catch {}
 
-  // Último earnings histórico (beat/miss)
+  // 2 — Último earnings histórico: beat/miss desde endpoint de estimados
   try {
     const histRes = await fetch(
       `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(ticker)}&limit=4&token=${finnhubKey}`,
@@ -165,42 +161,47 @@ async function fetchEarnings(ticker, finnhubKey) {
       const histData = await histRes.json()
       if (histData?.length) {
         const last = histData[0]
-        lastEarningsDate = last.period ?? null
+        lastEarningsDate = last.period ?? null  // período fiscal (YYYY-MM-DD)
         if (last.actual != null && last.estimate != null) lastEarningsBeat = last.actual >= last.estimate
       }
     }
   } catch {}
 
-  // FIX: eliminado el fallback que buscaba hacia atrás y asignaba fechas pasadas
-  // a nextEarningsDate — eso era la causa del badge mostrando fechas viejas.
+  // 3 — Fecha real del reporte reciente desde el calendario hacia atrás (últimos 30 días)
+  // Esto es distinto a lastEarningsDate (período fiscal) — es la fecha en que la empresa
+  // efectivamente publicó resultados. Se usa para el cache bypass en narrative.
+  try {
+    const pastRes = await fetch(
+      `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${ago30days}&to=${today}&token=${finnhubKey}`,
+      { headers: { 'X-Finnhub-Token': finnhubKey } }
+    )
+    if (pastRes.ok) {
+      const pastData = await pastRes.json()
+      const pastEarnings = pastData?.earningsCalendar || []
+      // Tomar el más reciente que sea hoy o antes (no futuro)
+      const pastDates = pastEarnings
+        .filter(e => e.date && !isFutureDate(e.date))
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+      if (pastDates.length) lastEarningsReportDate = pastDates[0].date
+    }
+  } catch {}
 
-  return { nextEarningsDate, lastEarningsDate, lastEarningsBeat }
+  return { nextEarningsDate, lastEarningsDate, lastEarningsReportDate, lastEarningsBeat }
 }
 
 async function alertYahooDown(ticker, errorMsg) {
   const resendKey  = process.env.RESEND_API_KEY
   const alertEmail = process.env.ALERT_EMAIL
   if (!resendKey || !alertEmail) return
-
   try {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${resendKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resendKey}` },
       body: JSON.stringify({
         from: 'alerts@stockpulse.app',
         to: alertEmail,
         subject: `[StockPulse] Yahoo Finance no responde — ${ticker}`,
-        html: `
-          <p><strong>Yahoo Finance no respondió</strong> para el ticker <code>${ticker}</code>.</p>
-          <p><strong>Error:</strong> ${errorMsg}</p>
-          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-          <p>El precio en tiempo real no estará disponible hasta que se restablezca la conexión.</p>
-          <hr>
-          <p style="color:#666;font-size:12px">StockPulse · alerta automática</p>
-        `,
+        html: `<p><strong>Yahoo Finance no respondió</strong> para <code>${ticker}</code>.</p><p><strong>Error:</strong> ${errorMsg}</p><p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>`,
       }),
     })
   } catch {
@@ -268,7 +269,6 @@ export async function POST(request) {
     // 3 — Histórico 1 año → indicadores técnicos
     let ma50 = null, ma200 = null, rsi = null, macd = null, macdSignal = null
     let relVol = null, change1m = null, high52 = null, low52 = null
-
     try {
       const to   = new Date().toISOString().split('T')[0]
       const from = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -277,13 +277,11 @@ export async function POST(request) {
       )
       const hist = await histRes.json()
       const bars = hist.results || []
-
       if (bars.length >= 20) {
         const closes  = bars.map(b => b.c)
         const highs   = bars.map(b => b.h)
         const lows    = bars.map(b => b.l)
         const volumes = bars.map(b => b.v)
-
         ma50       = calcMA(closes, 50)
         ma200      = calcMA(closes, 200)
         rsi        = calcRSI(closes, 14)
@@ -307,8 +305,8 @@ export async function POST(request) {
       fundamentals = calcFundamentals(finData, price)
     } catch {}
 
-    // 5 — Earnings (Finnhub)
-    const { nextEarningsDate, lastEarningsDate, lastEarningsBeat } = await fetchEarnings(t, finnhubKey)
+    // 5 — Earnings (Finnhub) — ahora incluye lastEarningsReportDate
+    const { nextEarningsDate, lastEarningsDate, lastEarningsReportDate, lastEarningsBeat } = await fetchEarnings(t, finnhubKey)
     const nextEarningsDays = calcEarningsDays(nextEarningsDate)
 
     // 6 — Noticias
@@ -319,7 +317,6 @@ export async function POST(request) {
         `https://api.polygon.io/v2/reference/news?ticker=${encodeURIComponent(t)}&limit=10&order=desc&sort=published_utc&published_utc.gte=${sevenDaysAgo}&apiKey=${polygonKey}`
       )
       const newsData = await newsRes.json()
-
       if (!newsData.results?.length) {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         const newsRes2 = await fetch(
@@ -345,7 +342,9 @@ export async function POST(request) {
       relVol, change1m, high52, low52,
       fundamentals,
       nextEarningsDate, nextEarningsDays,
-      lastEarningsDate, lastEarningsBeat,
+      lastEarningsDate,
+      lastEarningsReportDate,  // fecha real del reporte — usada para cache bypass en narrative
+      lastEarningsBeat,
       fetchedAt: new Date().toISOString()
     })
   } catch (err) {
