@@ -22,11 +22,25 @@ export async function GET() {
   try {
     const url = `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks?tickers=${WATCHLIST.join(',')}&apiKey=${key}`
     const res = await fetch(url)
-    const json = await res.json()
 
-    // Exponer error real de Polygon si lo hay
+    // Leer como texto primero para detectar respuestas HTML / no-JSON
+    const raw = await res.text()
+    let json
+    try {
+      json = JSON.parse(raw)
+    } catch {
+      // Polygon devolvió algo que no es JSON (HTML de error, rate limit page, etc.)
+      return NextResponse.json(
+        { error: `Polygon respuesta inválida (status ${res.status}): ${raw.slice(0, 200)}` },
+        { status: 500 }
+      )
+    }
+
     if (!res.ok || json.status === 'ERROR') {
-      return NextResponse.json({ error: `Polygon: ${json.error || json.message || res.status}` }, { status: 500 })
+      return NextResponse.json(
+        { error: `Polygon error: ${json.error || json.message || res.status}` },
+        { status: 500 }
+      )
     }
 
     const tickers = (json.tickers || []).map(t => {
@@ -43,7 +57,6 @@ export async function GET() {
     const data = {
       gainers: sorted.filter(t => t.change > 0).slice(0, 8),
       losers:  sorted.filter(t => t.change < 0).reverse().slice(0, 8),
-      _debug: { total: tickers.length, status: json.status }
     }
 
     _cache = data
