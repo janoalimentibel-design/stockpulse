@@ -105,6 +105,7 @@ function calcFundamentals(financials, currentPrice) {
   }
 }
 
+// Returns null if the date is today or in the past — callers treat null as "no upcoming earnings"
 function calcEarningsDays(earningsDate) {
   if (!earningsDate) return null
   try {
@@ -112,21 +113,36 @@ function calcEarningsDays(earningsDate) {
     today.setHours(0, 0, 0, 0)
     const eDate = new Date(earningsDate)
     eDate.setHours(0, 0, 0, 0)
-    return Math.round((eDate - today) / (1000 * 60 * 60 * 24))
+    const days = Math.round((eDate - today) / (1000 * 60 * 60 * 24))
+    return days > 0 ? days : null  // FIX: descarta fechas pasadas o de hoy
   } catch {
     return null
+  }
+}
+
+// Returns true only if the date string is strictly in the future (tomorrow or later)
+function isFutureDate(dateStr) {
+  if (!dateStr) return false
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const d = new Date(dateStr)
+    d.setHours(0, 0, 0, 0)
+    return d > today
+  } catch {
+    return false
   }
 }
 
 async function fetchEarnings(ticker, finnhubKey) {
   if (!finnhubKey) return {}
 
-  const today      = new Date().toISOString().split('T')[0]
-  const in90days   = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const ago180days = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const today    = new Date().toISOString().split('T')[0]
+  const in90days = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   let nextEarningsDate = null, lastEarningsDate = null, lastEarningsBeat = null
 
+  // Próximos earnings (solo fechas futuras)
   try {
     const calRes = await fetch(
       `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${today}&to=${in90days}&token=${finnhubKey}`,
@@ -134,10 +150,12 @@ async function fetchEarnings(ticker, finnhubKey) {
     )
     if (calRes.ok) {
       const calData = await calRes.json()
-      if (calData?.earningsCalendar?.length) nextEarningsDate = calData.earningsCalendar[0].date
+      const candidates = (calData?.earningsCalendar || []).filter(e => isFutureDate(e.date))
+      if (candidates.length) nextEarningsDate = candidates[0].date
     }
   } catch {}
 
+  // Último earnings histórico (beat/miss)
   try {
     const histRes = await fetch(
       `https://finnhub.io/api/v1/stock/earnings?symbol=${encodeURIComponent(ticker)}&limit=4&token=${finnhubKey}`,
@@ -153,32 +171,16 @@ async function fetchEarnings(ticker, finnhubKey) {
     }
   } catch {}
 
-  if (!nextEarningsDate) {
-    try {
-      const pastRes = await fetch(
-        `https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(ticker)}&from=${ago180days}&to=${today}&token=${finnhubKey}`,
-        { headers: { 'X-Finnhub-Token': finnhubKey } }
-      )
-      if (pastRes.ok) {
-        const pastData = await pastRes.json()
-        const pastEarnings = pastData?.earningsCalendar
-        if (pastEarnings?.length) nextEarningsDate = pastEarnings[pastEarnings.length - 1].date
-      }
-    } catch {}
-  }
+  // FIX: eliminado el fallback que buscaba hacia atrás y asignaba fechas pasadas
+  // a nextEarningsDate — eso era la causa del badge mostrando fechas viejas.
 
   return { nextEarningsDate, lastEarningsDate, lastEarningsBeat }
 }
 
-/**
- * Alerta por email cuando Yahoo Finance falla.
- * Solo llega a ALERT_EMAIL — nunca al usuario.
- * Si Resend no está configurado, falla silenciosamente.
- */
 async function alertYahooDown(ticker, errorMsg) {
   const resendKey  = process.env.RESEND_API_KEY
   const alertEmail = process.env.ALERT_EMAIL
-  if (!resendKey || !alertEmail) return  // no configurado → silencio
+  if (!resendKey || !alertEmail) return
 
   try {
     await fetch('https://api.resend.com/emails', {
@@ -188,7 +190,7 @@ async function alertYahooDown(ticker, errorMsg) {
         'Authorization': `Bearer ${resendKey}`,
       },
       body: JSON.stringify({
-        from: 'alerts@stockpulse.app',  // cambiar a tu dominio verificado en Resend
+        from: 'alerts@stockpulse.app',
         to: alertEmail,
         subject: `[StockPulse] Yahoo Finance no responde — ${ticker}`,
         html: `
@@ -202,18 +204,15 @@ async function alertYahooDown(ticker, errorMsg) {
       }),
     })
   } catch {
-    // Si el email falla, solo logueamos — nunca propagar el error
     console.error('[alert] No se pudo enviar alerta de Yahoo Finance')
   }
 }
 
-// Control para no enviar la misma alerta repetidamente en la misma instancia del servidor
 let lastYahooAlertAt = 0
-const YAHOO_ALERT_COOLDOWN_MS = 30 * 60 * 1000 // 1 alerta cada 30 minutos como máximo
+const YAHOO_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 
 export async function POST(request) {
   try {
-    // Rate limiting — 30 requests por IP por hora
     const ip = getIP(request)
     const { allowed, retryAfter } = await checkRateLimit(ip, 'market-data')
     if (!allowed) {
@@ -260,10 +259,9 @@ export async function POST(request) {
       low   = meta.regularMarketDayLow ?? null
     } catch (yahooErr) {
       console.error(`[market-data] Yahoo Finance falló para ${t}:`, yahooErr?.message)
-      // Enviar alerta solo si pasó suficiente tiempo desde la última
       if (Date.now() - lastYahooAlertAt > YAHOO_ALERT_COOLDOWN_MS) {
         lastYahooAlertAt = Date.now()
-        alertYahooDown(t, yahooErr?.message)  // fire and forget — no await
+        alertYahooDown(t, yahooErr?.message)
       }
     }
 
