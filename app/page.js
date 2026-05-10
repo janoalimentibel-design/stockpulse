@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar'
 import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
 import ManualForm from '../components/ManualForm'
+import MoversSection from '../components/MoversSection'
 
 function friendlyError(raw) {
   if (!raw) return 'Ocurrió un error inesperado. Intentá de nuevo.'
@@ -115,6 +116,11 @@ export default function Home() {
     }
   }
 
+  function handleMoverSelect(selectedTicker) {
+    setTicker(selectedTicker)
+    runAnalysis(selectedTicker)
+  }
+
   const hasResults = analysis && marketData
 
   return (
@@ -203,14 +209,18 @@ export default function Home() {
           </div>
         )}
 
-        {/* Estado vacío */}
+        {/* Estado vacío + Movers */}
         {!hasResults && !loading && !error && (
-          <div className="text-center py-16" style={{ color: 'var(--text3)' }}>
-            <p className="text-5xl mb-5">📈</p>
-            <p className="text-sm mb-1">Escribí un ticker o nombre de empresa para ver el análisis completo.</p>
-            <p className="text-xs">Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN · KO · TSLA</p>
+          <div>
+            <div className="text-center py-10" style={{ color: 'var(--text3)' }}>
+              <p className="text-5xl mb-5">📈</p>
+              <p className="text-sm mb-1">Escribí un ticker o nombre de empresa para ver el análisis completo.</p>
+              <p className="text-xs">Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN · KO · TSLA</p>
+            </div>
+            <MoversSection onSelect={handleMoverSelect} />
           </div>
         )}
+
       </main>
     </div>
   )
