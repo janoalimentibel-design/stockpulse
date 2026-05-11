@@ -163,6 +163,16 @@ export default function Navbar() {
               Analizador
             </Link>
 
+            <Link href="/movimientos"
+              className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all"
+              style={{
+                background: path === '/movimientos' ? 'var(--bg3)' : 'transparent',
+                color: path === '/movimientos' ? 'var(--text)' : 'var(--text2)',
+                border: `1px solid ${path === '/movimientos' ? 'var(--border2)' : 'transparent'}`,
+              }}>
+              Movimientos
+            </Link>
+
             <button onClick={() => setGuiaOpen(true)}
               className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all"
               style={{ background: 'transparent', color: 'var(--text2)', border: '1px solid transparent' }}>
