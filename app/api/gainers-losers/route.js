@@ -1,4 +1,5 @@
 // app/api/gainers-losers/route.js
+// Usa Yahoo Finance batch quotes — mismo origen que market-data/route.js, ya funciona.
 import { NextResponse } from 'next/server'
 
 let _cache = null
@@ -16,41 +17,43 @@ export async function GET() {
     return NextResponse.json(_cache)
   }
 
-  const key = process.env.POLYGON_API_KEY
-  if (!key) return NextResponse.json({ error: 'POLYGON_API_KEY no configurada.' }, { status: 500 })
-
   try {
-    const url = `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks?tickers=${WATCHLIST.join(',')}&apiKey=${key}`
-    const res = await fetch(url)
+    const symbols = WATCHLIST.join(',')
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=symbol,regularMarketPrice,regularMarketChangePercent`
 
-    // Leer como texto primero para detectar respuestas HTML / no-JSON
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; StockPulse/1.0)',
+        'Accept': 'application/json',
+      },
+    })
+
     const raw = await res.text()
     let json
     try {
       json = JSON.parse(raw)
     } catch {
-      // Polygon devolvió algo que no es JSON (HTML de error, rate limit page, etc.)
       return NextResponse.json(
-        { error: `Polygon respuesta inválida (status ${res.status}): ${raw.slice(0, 200)}` },
+        { error: `Yahoo respuesta inválida (${res.status}): ${raw.slice(0, 150)}` },
         { status: 500 }
       )
     }
 
-    if (!res.ok || json.status === 'ERROR') {
+    const quotes = json?.quoteResponse?.result || []
+    if (!quotes.length) {
       return NextResponse.json(
-        { error: `Polygon error: ${json.error || json.message || res.status}` },
+        { error: `Yahoo sin resultados. Status: ${json?.quoteResponse?.error || res.status}` },
         { status: 500 }
       )
     }
 
-    const tickers = (json.tickers || []).map(t => {
-      const price = t.day?.c || t.prevDay?.c || t.lastTrade?.p || 0
-      return {
-        ticker: t.ticker,
-        price: +price.toFixed(2),
-        change: +(t.todaysChangePerc ?? 0).toFixed(2),
-      }
-    }).filter(t => t.price > 0)
+    const tickers = quotes
+      .filter(q => q.regularMarketPrice > 0)
+      .map(q => ({
+        ticker: q.symbol,
+        price: +q.regularMarketPrice.toFixed(2),
+        change: +(q.regularMarketChangePercent ?? 0).toFixed(2),
+      }))
 
     const sorted = [...tickers].sort((a, b) => b.change - a.change)
 
