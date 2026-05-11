@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { usePostHog } from 'posthog-js/react'
 import { computeAnalysis } from '../lib/analyze'
 import Navbar from '../components/Navbar'
@@ -116,6 +116,15 @@ export default function Home() {
     }
   }
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get('ticker')
+    if (t) {
+      window.history.replaceState({}, '', '/')
+      runAnalysis(t.toUpperCase())
+    }
+  }, [])
+
   function handleMoverSelect(selectedTicker) {
     setTicker(selectedTicker)
     runAnalysis(selectedTicker)
@@ -128,7 +137,6 @@ export default function Home() {
       <Navbar />
       <main className="max-w-[1280px] mx-auto px-5 pb-20 pt-6">
 
-        {/* Landing mínima */}
         <div className="mb-7">
           <h1 className="text-3xl font-bold tracking-tight mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>
             Análisis de acciones
@@ -146,7 +154,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Buscador */}
         <SearchBox
           ticker={ticker}
           setTicker={setTicker}
@@ -160,7 +167,6 @@ export default function Home() {
           </p>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="mt-6 rounded-xl p-5" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
             <div className="flex items-center gap-3 mb-3">
@@ -173,7 +179,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Error amigable */}
         {error && (
           <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--red)' }}>No pudimos completar el análisis</p>
@@ -181,7 +186,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Resultado */}
         {hasResults && (
           <div ref={resultRef} className="mt-6 animate-fade-up">
             <ResultCard
@@ -209,12 +213,10 @@ export default function Home() {
           </div>
         )}
 
-        {/* Estado vacío + Movers */}
         {!hasResults && !loading && !error && (
           <div>
             <div className="text-center py-10" style={{ color: 'var(--text3)' }}>
               <p className="text-5xl mb-5">📈</p>
-              <p className="text-sm mb-1">Escribí un ticker o nombre de empresa para ver el análisis completo.</p>
               <p className="text-xs">Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN · KO · TSLA</p>
             </div>
             <MoversSection onSelect={handleMoverSelect} />

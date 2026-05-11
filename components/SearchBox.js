@@ -38,6 +38,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
   }, [query])
 
   function selectSuggestion(item) {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     setQuery(item.name)
     setSelectedTicker(item.ticker)
     setTicker(item.ticker)
@@ -74,7 +75,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-            placeholder="Escribí el nombre o ticker — Apple, NVDA, Mercado Libre..."
+            placeholder="Buscá una acción — Apple, NVDA, Mercado Libre..."
             maxLength={60}
             disabled={loading}
             style={{
@@ -119,11 +120,9 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
       </div>
       {selectedTicker
         ? <p className="text-xs mt-2" style={{ color: 'var(--green)' }}>✓ <strong>{selectedTicker}</strong> — {query}</p>
-        : <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>
-            {query.length >= 2 && !searching
-              ? 'Elegí una empresa del dropdown para analizar'
-              : 'Escribí el nombre o el ticker. Ej: Apple, AAPL, Nvidia, NVDA, Mercado Libre, MELI'}
-          </p>
+        : query.length >= 2 && !searching
+          ? <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Elegí una empresa del dropdown para analizar</p>
+          : null
       }
     </div>
   )
