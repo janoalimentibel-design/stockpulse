@@ -46,23 +46,19 @@ export default function Home() {
   async function runAnalysis(searchTicker) {
     const t = (searchTicker || ticker).toUpperCase().trim()
     if (!t) return
-
     posthog?.capture('ticker_searched', { ticker: t })
-
     setLoading(true)
     setError('')
     setMarketData(null)
     setNarrative(null)
     setAnalysis(null)
     setActiveTab('resultado')
-
     let msgIdx = 0
     setLoadingMsg(msgs[0])
     const msgInterval = setInterval(() => {
       msgIdx = (msgIdx + 1) % msgs.length
       setLoadingMsg(msgs[msgIdx])
     }, 2000)
-
     try {
       const mdRes = await fetch('/api/market-data', {
         method: 'POST',
@@ -72,11 +68,9 @@ export default function Home() {
       const md = await mdRes.json()
       if (!mdRes.ok || md.error) throw new Error(md.error || 'ticker_not_found')
       setMarketData(md)
-
       const enrichedForAnalysis = { ...md, ...(md.fundamentals || {}), ...manualData }
       const prelimResult = computeAnalysis(enrichedForAnalysis)
       setAnalysis(prelimResult)
-
       setLoadingMsg('Generando análisis completo con IA...')
       const narRes = await fetch('/api/narrative', {
         method: 'POST',
@@ -104,11 +98,9 @@ export default function Home() {
         has_fundamentals: !!(md.fundamentals?.de || md.fundamentals?.roe),
         narrative_ok: !nar.error,
       })
-
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (err) {
-      const friendlyMsg = friendlyError(err.message)
-      setError(friendlyMsg)
+      setError(friendlyError(err.message))
       posthog?.capture('analysis_error', { ticker: t, error: err.message })
     } finally {
       clearInterval(msgInterval)
@@ -136,7 +128,6 @@ export default function Home() {
     <div className="app-shell min-h-screen">
       <Navbar />
       <main className="max-w-[1280px] mx-auto px-5 pb-20 pt-6">
-
         <div className="mb-7">
           <h1 className="text-3xl font-bold tracking-tight mb-2" style={{ fontFamily: 'Syne, sans-serif' }}>
             Análisis de acciones
@@ -153,20 +144,12 @@ export default function Home() {
             ))}
           </div>
         </div>
-
-        <SearchBox
-          ticker={ticker}
-          setTicker={setTicker}
-          onSearch={runAnalysis}
-          loading={loading}
-        />
-
+        <SearchBox ticker={ticker} setTicker={setTicker} onSearch={runAnalysis} loading={loading} />
         {!hasResults && !loading && (
           <p className="text-[11px] mt-3" style={{ color: 'var(--text3)' }}>
             ⚠️ Herramienta informativa — no constituye asesoramiento financiero ni recomendación de inversión.
           </p>
         )}
-
         {loading && (
           <div className="mt-6 rounded-xl p-5" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
             <div className="flex items-center gap-3 mb-3">
@@ -178,14 +161,12 @@ export default function Home() {
             </div>
           </div>
         )}
-
         {error && (
           <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--red)' }}>No pudimos completar el análisis</p>
             <p className="text-xs" style={{ color: 'var(--text2)' }}>{error}</p>
           </div>
         )}
-
         {hasResults && (
           <div ref={resultRef} className="mt-6 animate-fade-up">
             <ResultCard
@@ -212,7 +193,6 @@ export default function Home() {
             </div>
           </div>
         )}
-
         {!hasResults && !loading && !error && (
           <div>
             <div className="text-center py-10" style={{ color: 'var(--text3)' }}>
@@ -222,7 +202,6 @@ export default function Home() {
             <MoversSection onSelect={handleMoverSelect} />
           </div>
         )}
-
       </main>
     </div>
   )
