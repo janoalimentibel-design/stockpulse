@@ -13,12 +13,23 @@ export async function POST(request) {
 
     const q = query.toUpperCase().trim()
 
+    const fetchTickers = async (url) => {
+      const r = await fetch(url)
+      const data = await r.json()
+      if (data.status === 'ERROR' || r.status === 429) return { results: [], rateLimited: true }
+      return data
+    }
+
     const [byName, byTicker] = await Promise.all([
-      fetch(`https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&market=stocks&limit=8&apiKey=${polygonKey}`)
-        .then(r => r.json()).catch(() => ({ results: [] })),
-      fetch(`https://api.polygon.io/v3/reference/tickers?ticker=${encodeURIComponent(q)}&active=true&market=stocks&limit=4&apiKey=${polygonKey}`)
-        .then(r => r.json()).catch(() => ({ results: [] })),
+      fetchTickers(`https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&market=stocks&limit=8&apiKey=${polygonKey}`)
+        .catch(() => ({ results: [] })),
+      fetchTickers(`https://api.polygon.io/v3/reference/tickers?ticker=${encodeURIComponent(q)}&active=true&market=stocks&limit=4&apiKey=${polygonKey}`)
+        .catch(() => ({ results: [] })),
     ])
+
+    if (byName.rateLimited || byTicker.rateLimited) {
+      return Response.json({ results: [], rateLimited: true })
+    }
 
     const seen = new Set()
     const merged = []

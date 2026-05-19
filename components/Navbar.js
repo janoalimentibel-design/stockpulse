@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import { useKeys } from '../lib/useKeys'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -136,7 +135,6 @@ function GuiaModal({ onClose }) {
 }
 
 export default function Navbar() {
-  const { hasPolygon, hasClaude } = useKeys()
   const path = usePathname()
   const [guiaOpen, setGuiaOpen] = useState(false)
 
@@ -180,22 +178,6 @@ export default function Navbar() {
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{
-              background: hasPolygon ? 'var(--green-bg)' : 'var(--bg3)',
-              color: hasPolygon ? 'var(--green)' : 'var(--text3)',
-              border: `1px solid ${hasPolygon ? 'var(--green-border)' : 'var(--border)'}`,
-            }}>
-              {hasPolygon ? '● Polygon' : '○ Polygon'}
-            </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{
-              background: hasClaude ? 'var(--accent-bg)' : 'var(--bg3)',
-              color: hasClaude ? 'var(--accent)' : 'var(--text3)',
-              border: `1px solid ${hasClaude ? 'var(--accent-border)' : 'var(--border)'}`,
-            }}>
-              {hasClaude ? '● Claude' : '○ Claude'}
-            </span>
-          </div>
         </div>
       </nav>
 

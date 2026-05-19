@@ -184,6 +184,34 @@ function EarningsBadge({ nextEarningsDate, nextEarningsDays, lastEarningsBeat })
   )
 }
 
+function getNewsSentiment(title) {
+  const t = title.toLowerCase()
+  const pos = ['buy', 'upgrade', 'beat', 'exceed', 'strong', 'growth', 'profit', 'gain', 'record', 'rally', 'surge', 'rises', 'bullish', 'outperform', 'sube', 'subi', 'gana', 'crece', 'mejora', 'supera', 'récord', 'alza']
+  const neg = ['sell', 'downgrade', 'miss', 'weak', 'loss', 'decline', 'fall', 'drop', 'cut', 'lower', 'bearish', 'underperform', 'layoff', 'lawsuit', 'baja', 'cae', 'pierde', 'reduce', 'recorta', 'demanda', 'fraude', 'quiebra']
+  if (pos.some(w => t.includes(w))) return 'pos'
+  if (neg.some(w => t.includes(w))) return 'neg'
+  return 'neut'
+}
+
+function NewsSentimentBadge({ title }) {
+  const sent = getNewsSentiment(title)
+  const map = {
+    pos:  { label: 'Positivo', color: 'var(--green)',  bg: 'var(--green-bg)',  border: 'var(--green-border)'  },
+    neg:  { label: 'Negativo', color: 'var(--red)',    bg: 'var(--red-bg)',    border: 'var(--red-border)'    },
+    neut: { label: 'Neutro',   color: 'var(--text3)',  bg: 'var(--bg3)',       border: 'var(--border)'        },
+  }
+  const s = map[sent]
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+      whiteSpace: 'nowrap', marginLeft: 6,
+    }}>
+      {s.label}
+    </span>
+  )
+}
+
 const MOBILE_TABS = [
   { id: 'veredicto', label: 'Veredicto' },
   { id: 'tecnico',   label: 'Técnico'   },
@@ -209,7 +237,7 @@ export default function ResultCard({
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 8px', borderRadius: 999, background: 'rgba(108,127,255,0.12)', border: '1px solid rgba(108,127,255,0.28)' }}>
-              ★ Análisis IA · Solo informativo
+              ¿Cómo lo ves?
             </span>
             {narrative.analysts_consensus && (
               <span style={{ fontSize: 12, fontWeight: 600, color: consensusColor(narrative.analysts_consensus) }}>
@@ -390,7 +418,7 @@ export default function ResultCard({
 
         {/* Columna derecha: narrativa IA + indicadores + noticias */}
         <div className="result-col-right">
-          <SectionLabel>★ Narrativa IA</SectionLabel>
+          <SectionLabel>¿Qué está pasando en el mercado?</SectionLabel>
           <NarrativaContent />
 
           {techInds.length > 0 && (
@@ -418,10 +446,13 @@ export default function ResultCard({
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '4px 12px 8px' }}>
                 {marketData.news.map((n, i) => (
                   <div key={i} style={{ padding: '8px 0', borderBottom: i < marketData.news.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                    <a href={n.url} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, display: 'block' }}>
-                      {n.title}
-                    </a>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                      <a href={n.url} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, flex: 1 }}>
+                        {n.title}
+                      </a>
+                      <NewsSentimentBadge title={n.title} />
+                    </div>
                     <p style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
                       {n.publisher} · {n.published?.split('T')[0]}
                     </p>

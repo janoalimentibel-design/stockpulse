@@ -7,6 +7,7 @@ import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
 import ManualForm from '../components/ManualForm'
 import MoversSection from '../components/MoversSection'
+import SkeletonCard from '../components/SkeletonCard'
 
 function friendlyError(raw) {
   if (!raw) return 'Ocurrió un error inesperado. Intentá de nuevo.'
@@ -150,17 +151,7 @@ export default function Home() {
             ⚠️ Herramienta informativa — no constituye asesoramiento financiero ni recomendación de inversión.
           </p>
         )}
-        {loading && (
-          <div className="mt-6 rounded-xl p-5" style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-2 h-2 rounded-full animate-pulse-soft" style={{ background: 'var(--accent)' }} />
-              <span className="text-sm" style={{ color: 'var(--text2)' }}>{loadingMsg}</span>
-            </div>
-            <div className="h-[2px] rounded-full overflow-hidden" style={{ background: 'var(--bg4)' }}>
-              <div className="h-full rounded-full animate-slide-bar" style={{ background: 'var(--accent)' }} />
-            </div>
-          </div>
-        )}
+        {loading && <SkeletonCard message={loadingMsg} />}
         {error && (
           <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)' }}>
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--red)' }}>No pudimos completar el análisis</p>

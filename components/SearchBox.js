@@ -6,8 +6,10 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
   const [suggestions, setSuggestions]   = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [searching, setSearching]       = useState(false)
+  const [searchError, setSearchError]   = useState('')
   const [selectedTicker, setSelectedTicker] = useState(null)
   const debounceRef = useRef(null)
+  const abortRef    = useRef(null)
   const wrapperRef  = useRef(null)
 
   useEffect(() => {
@@ -19,22 +21,34 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
   }, [])
 
   useEffect(() => {
-    if (!query || query.length < 2) { setSuggestions([]); setShowSuggestions(false); return }
+    if (!query || query.length < 2) { setSuggestions([]); setShowSuggestions(false); setSearchError(''); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
+      if (abortRef.current) abortRef.current.abort()
+      abortRef.current = new AbortController()
       setSearching(true)
+      setSearchError('')
       try {
         const res = await fetch('/api/search-ticker', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query }),
+          signal: abortRef.current.signal,
         })
         const data = await res.json()
-        setSuggestions(data.results || [])
-        setShowSuggestions((data.results || []).length > 0)
-      } catch { setSuggestions([]) }
+        if (data.rateLimited) {
+          setSearchError('Demasiadas búsquedas seguidas. Esperá unos segundos.')
+          setSuggestions([])
+          setShowSuggestions(false)
+        } else {
+          setSuggestions(data.results || [])
+          setShowSuggestions((data.results || []).length > 0)
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') setSuggestions([])
+      }
       finally { setSearching(false) }
-    }, 350)
+    }, 400)
   }, [query])
 
   function selectSuggestion(item) {
@@ -118,11 +132,13 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
           {loading ? 'Analizando...' : 'Analizar'}
         </button>
       </div>
-      {selectedTicker
-        ? <p className="text-xs mt-2" style={{ color: 'var(--green)' }}>✓ <strong>{selectedTicker}</strong> — {query}</p>
-        : query.length >= 2 && !searching
-          ? <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Elegí una empresa del dropdown para analizar</p>
-          : null
+      {searchError
+        ? <p className="text-xs mt-2" style={{ color: 'var(--amber)' }}>⚠ {searchError}</p>
+        : selectedTicker
+          ? <p className="text-xs mt-2" style={{ color: 'var(--green)' }}>✓ <strong>{selectedTicker}</strong> — {query}</p>
+          : query.length >= 2 && !searching
+            ? <p className="text-xs mt-2" style={{ color: 'var(--text3)' }}>Elegí una empresa del dropdown para analizar</p>
+            : null
       }
     </div>
   )
