@@ -143,7 +143,7 @@ export default function Navbar() {
   return (
     <>
       <nav className="sticky top-0 z-40 border-b"
-        style={{ background: 'rgba(11,13,18,0.90)', backdropFilter: 'blur(12px)', borderColor: 'var(--border)' }}>
+        style={{ background: 'var(--nav-bg)', backdropFilter: 'blur(12px)', borderColor: 'var(--border)' }}>
         <div className="max-w-[900px] mx-auto px-5 h-14 flex items-center justify-between gap-6">
 
           <Link href="/" className="flex items-center gap-2 shrink-0">

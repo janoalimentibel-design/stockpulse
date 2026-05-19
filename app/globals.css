@@ -26,8 +26,34 @@
   --accent: #6c7fff;
   --accent-bg: rgba(108,127,255,0.10);
   --accent-border: rgba(108,127,255,0.28);
+  --nav-bg: rgba(11,13,18,0.90);
   --radius: 12px;
   --radius-sm: 8px;
+}
+
+html.light {
+  --bg: #f5f6fa;
+  --bg2: #eef0f5;
+  --bg3: #e3e6ed;
+  --bg4: #d5d9e4;
+  --border: rgba(0,0,0,0.06);
+  --border2: rgba(0,0,0,0.12);
+  --text: #11131a;
+  --text2: #50546a;
+  --text3: #9399b0;
+  --green: #2e8a52;
+  --green-bg: rgba(46,138,82,0.10);
+  --green-border: rgba(46,138,82,0.28);
+  --red: #c03030;
+  --red-bg: rgba(192,48,48,0.10);
+  --red-border: rgba(192,48,48,0.28);
+  --amber: #b8721e;
+  --amber-bg: rgba(184,114,30,0.10);
+  --amber-border: rgba(184,114,30,0.28);
+  --accent: #4b5ee8;
+  --accent-bg: rgba(75,94,232,0.10);
+  --accent-border: rgba(75,94,232,0.28);
+  --nav-bg: rgba(245,246,250,0.92);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,7 +64,10 @@ body {
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  transition: background 0.2s, color 0.2s;
 }
+
+html.light body::before { opacity: 0.15; }
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg2); }
