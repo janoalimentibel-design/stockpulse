@@ -101,47 +101,55 @@ export default function MoversSection({ onSelect }) {
         })}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {items.map((item) => (
-          <div
-            key={item.ticker}
-            onClick={() => onSelect?.(item.ticker)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && onSelect?.(item.ticker)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 12px', borderRadius: 10,
-              cursor: 'pointer', border: '0.5px solid transparent', transition: 'background .12s',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'var(--bg2)'
-              e.currentTarget.style.borderColor = 'var(--border2)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'transparent'
-              e.currentTarget.style.borderColor = 'transparent'
-            }}
-          >
-            <Logo ticker={item.ticker} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
-                {item.ticker}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+      }}>
+        {items.map((item) => {
+          const isGain = item.change >= 0
+          const changeColor = isGain ? '#3d9e5e' : '#c04040'
+          const changeBg = isGain ? 'rgba(78,187,121,0.10)' : 'rgba(224,80,80,0.10)'
+          const changeBorder = isGain ? 'rgba(78,187,121,0.25)' : 'rgba(224,80,80,0.25)'
+          return (
+            <div
+              key={item.ticker}
+              onClick={() => onSelect?.(item.ticker)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && onSelect?.(item.ticker)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: 8, padding: '14px 10px', borderRadius: 12,
+                cursor: 'pointer', border: '0.5px solid var(--border2)',
+                background: 'var(--bg2)', transition: 'all .15s', textAlign: 'center',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'var(--bg3)'
+                e.currentTarget.style.borderColor = 'var(--border)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'var(--bg2)'
+                e.currentTarget.style.borderColor = 'var(--border2)'
+              }}
+            >
+              <Logo ticker={item.ticker} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                  {item.ticker}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                  ${item.price.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                ${item.price.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <div style={{
-                fontSize: 14, fontWeight: 600,
-                color: item.change >= 0 ? '#3d9e5e' : '#c04040',
+                fontSize: 13, fontWeight: 700, color: changeColor,
+                background: changeBg, border: `0.5px solid ${changeBorder}`,
+                borderRadius: 999, padding: '3px 10px',
               }}>
-                {item.change >= 0 ? '▲' : '▼'} {Math.abs(item.change).toFixed(2)}%
+                {isGain ? '▲' : '▼'} {Math.abs(item.change).toFixed(2)}%
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <p style={{ fontSize: 10, color: 'var(--text3)', marginTop: 10, textAlign: 'center' }}>
