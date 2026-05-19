@@ -235,16 +235,13 @@ export default function ResultCard({
           background: 'rgba(108,127,255,0.07)', border: '1px solid rgba(108,127,255,0.22)',
           borderRadius: 10, padding: '12px 14px', marginBottom: 12,
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 8px', borderRadius: 999, background: 'rgba(108,127,255,0.12)', border: '1px solid rgba(108,127,255,0.28)' }}>
-              ¿Cómo lo ves?
-            </span>
-            {narrative.analysts_consensus && (
+          {narrative.analysts_consensus && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: consensusColor(narrative.analysts_consensus) }}>
                 {narrative.analysts_consensus}
               </span>
-            )}
-          </div>
+            </div>
+          )}
           {narrative.technical_summary && (
             <p style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65, marginBottom: 8 }}>
               <span style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Técnico · </span>
