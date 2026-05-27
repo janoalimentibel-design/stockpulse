@@ -21,3 +21,19 @@ test('buildDateRange devuelve hoy y hace 5 años como YYYY-MM-DD', () => {
     `Se esperaban ~1825-1827 días de diferencia, se obtuvo ${diffDays}`
   )
 })
+
+test('mapBar convierte una barra de Polygon a fila ohlcv_daily', () => {
+  // 1609459200000 ms = 2021-01-01T00:00:00.000Z
+  const bar = { t: 1609459200000, o: 100.5, h: 105.0, l: 99.0, c: 103.2, v: 50000000 }
+  const row = mapBar('AAPL', bar)
+
+  assert.deepEqual(row, {
+    ticker: 'AAPL',
+    date:   '2021-01-01',
+    open:   100.5,
+    high:   105.0,
+    low:    99.0,
+    close:  103.2,
+    volume: 50000000,
+  })
+})

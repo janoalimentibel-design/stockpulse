@@ -11,7 +11,15 @@ function buildDateRange() {
 }
 
 function mapBar(ticker, bar) {
-  // implemented in Task 4
+  return {
+    ticker,
+    date:   new Date(bar.t).toISOString().split('T')[0],
+    open:   bar.o,
+    high:   bar.h,
+    low:    bar.l,
+    close:  bar.c,
+    volume: bar.v,
+  }
 }
 
 if (require.main === module) {
