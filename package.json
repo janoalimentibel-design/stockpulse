@@ -2,6 +2,9 @@
   "name": "stockpulse",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
+    "dotenv": "^17.4.2",
     "next": "14.2.3",
     "posthog-js": "^1.372.5",
     "react": "^18",
@@ -16,7 +20,6 @@
   },
   "devDependencies": {
     "autoprefixer": "^10",
-    "dotenv": "^17.4.2",
     "postcss": "^8",
     "tailwindcss": "^3"
   }

@@ -14,7 +14,7 @@ test('buildDateRange devuelve hoy y hace 5 años como YYYY-MM-DD', () => {
   assert.equal(to, today)
 
   // 'from' must be ~5 years before 'to' — verify via day count, not by re-running the algorithm
-  // Any 5-year span has 1825 or 1826 days depending on how many Feb 29s it contains
+  // Any 5-year span has 1825–1827 days depending on how many Feb 29s it contains
   const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24)
   assert.ok(
     diffDays >= 1825 && diffDays <= 1827,

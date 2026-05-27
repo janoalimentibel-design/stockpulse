@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS ohlcv_daily (
   PRIMARY KEY (ticker, date)
 );
 
+ALTER TABLE ohlcv_daily DISABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS idx_ohlcv_date ON ohlcv_daily (date);
 
 COMMIT;
