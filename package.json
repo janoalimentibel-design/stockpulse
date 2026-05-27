@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "autoprefixer": "^10",
+    "dotenv": "^17.4.2",
     "postcss": "^8",
     "tailwindcss": "^3"
   }

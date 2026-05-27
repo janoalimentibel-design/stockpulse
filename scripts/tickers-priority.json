@@ -1,0 +1,12 @@
+[
+  "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
+  "META", "TSLA", "AVGO", "JPM", "LLY",
+  "V",    "MA",   "UNH",  "XOM",  "COST",
+  "JNJ",  "WMT",  "NFLX", "HD",   "BAC",
+  "ABBV", "CRM",  "PG",   "AMD",  "ORCL",
+  "KO",   "MRK",  "CVX",  "WFC",  "TMO",
+  "ADBE", "ACN",  "PEP",  "CSCO", "MCD",
+  "DIS",  "ABT",  "QCOM", "IBM",  "HON",
+  "GE",   "CAT",  "AXP",  "GS",   "SPGI",
+  "MDT",  "AMGN", "BKNG", "INTU", "ISRG"
+]
