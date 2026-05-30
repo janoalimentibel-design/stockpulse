@@ -37,3 +37,11 @@ test('mapBar convierte una barra de Polygon a fila ohlcv_daily', () => {
     volume: 50000000,
   })
 })
+
+test('mapBar redondea volumen float a entero (datos ajustados por splits)', () => {
+  const bar = { t: 1609459200000, o: 100.5, h: 105.0, l: 99.0, c: 103.2, v: 37308155.220558 }
+  const row = mapBar('AAPL', bar)
+  assert.equal(row.volume, 37308155)
+  assert.equal(typeof row.volume, 'number')
+  assert.equal(row.volume % 1, 0)
+})

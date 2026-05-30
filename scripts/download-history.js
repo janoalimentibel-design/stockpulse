@@ -23,7 +23,7 @@ function mapBar(ticker, bar) {
     high:   bar.h,
     low:    bar.l,
     close:  bar.c,
-    volume: bar.v,
+    volume: Math.round(bar.v),
   }
 }
 
