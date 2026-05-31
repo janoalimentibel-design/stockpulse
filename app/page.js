@@ -8,6 +8,7 @@ import ResultCard from '../components/ResultCard'
 import ManualForm from '../components/ManualForm'
 import MoversSection from '../components/MoversSection'
 import SkeletonCard from '../components/SkeletonCard'
+import BacktestSection from '../components/BacktestSection'
 
 function friendlyError(raw) {
   if (!raw) return 'Ocurrió un error inesperado. Intentá de nuevo.'
@@ -182,6 +183,7 @@ export default function Home() {
                 }}
               />
             </div>
+            <BacktestSection ticker={marketData.ticker} />
           </div>
         )}
         {!hasResults && !loading && !error && (
