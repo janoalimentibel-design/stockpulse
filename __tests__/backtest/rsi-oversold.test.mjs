@@ -52,3 +52,14 @@ test('detects RSI exit from oversold and computes returns', () => {
   assert.equal(r.winsCount, 1)
   assert.equal(r.avgReturn30d, 10.0)
 })
+
+test('signal at end of array has null returns and does not count as win', () => {
+  // 16 bars: RSI dips below 30, then bar 15 exits — no room for 30d/60d returns
+  const closes = [100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 100]
+  const r = rsiOversold(makeOHLCV(closes))
+  assert.equal(r.totalCount, 1)
+  assert.equal(r.occurrences[0].return30d, null)
+  assert.equal(r.occurrences[0].return60d, null)
+  assert.equal(r.winsCount, 0)
+  assert.equal(r.avgReturn30d, null)
+})
