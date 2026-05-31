@@ -211,13 +211,18 @@ Header `Authorization: Bearer ${CRON_SECRET}`. Retorna 401 si falta o no coincid
 4. Upsert en `ohlcv_daily` con `onConflict: 'ticker,date'`
 5. Sleep 12s antes del siguiente ticker (excepto el último)
 
-### Config Vercel
+### Limitación de Vercel Hobby
 
+Vercel Hobby impone un límite de **60 segundos** por función serverless. El loop completo (50 tickers × 12s = ~600s) excede ese límite, por lo que el cron **no es viable en Hobby** tal como está.
+
+**Solución para esta etapa:** correr el update diario manualmente con el mismo script `scripts/download-history.js` (ya existente). El endpoint `/api/cron/daily` se implementa igual y queda listo para cuando se migre a Vercel Pro/Enterprise (`maxDuration = 800`) o se adopte otro mecanismo (GitHub Actions, Railway cron, etc.).
+
+El archivo incluye el comentario:
 ```js
+// LIMITACIÓN: Vercel Hobby timeout = 60s. Para 50 tickers necesitás Pro/Enterprise
+// o correr manualmente: node scripts/download-history.js
 export const maxDuration = 800
 ```
-
-Necesario para 50 tickers × 12s = ~600s en Vercel Pro/Enterprise.
 
 ### Response
 
