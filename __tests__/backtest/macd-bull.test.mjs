@@ -33,15 +33,20 @@ test('flat prices produce no MACD crossovers', () => {
 })
 
 test('trend reversal produces at least one MACD bull crossover', () => {
-  // 50 bars declining (100→51), then 50 bars at 200
-  // EMA12 (fast) recovers before EMA26 (slow) → MACD crosses above signal
+  // 50 bars flat at 10 (depressed), then 50 bars at 200
+  // Once price jumps, EMA12 (fast) rises before EMA26 (slow) → clean MACD bull crossover
+  // at signalPrice=200, well within the recovery zone
   const closes = [
-    ...Array.from({ length: 50 }, (_, i) => 100 - i),
+    ...Array(50).fill(10),
     ...Array(50).fill(200),
   ]
   const r = macdBull(makeOHLCV(closes))
 
   assert.ok(r.totalCount >= 1, 'should detect at least one MACD bull crossover')
+  assert.ok(
+    r.occurrences.some(o => o.signalPrice >= 150),
+    'al menos un cruce debe ocurrir en la zona de recuperación (precio >= 150)'
+  )
   assert.ok(r.occurrences.every(o => typeof o.date === 'string'), 'all occurrences have date')
   assert.ok(r.occurrences.every(o => typeof o.signalPrice === 'number'), 'all have numeric signalPrice')
   assert.ok(typeof r.totalCount === 'number')
