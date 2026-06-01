@@ -1,5 +1,6 @@
 'use client'
 import PriceChart from './PriceChart'
+import FeedbackWidget from './FeedbackWidget'
 
 const sentimentColors = {
   bull: { bg: 'var(--green-bg)', border: 'var(--green-border)', text: 'var(--green)' },
@@ -309,6 +310,7 @@ export default function ResultCard({
             )}
           </div>
         )}
+        <FeedbackWidget ticker={ticker} />
       </div>
     ) : narrative?._error ? (
       <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
