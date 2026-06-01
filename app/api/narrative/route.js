@@ -123,6 +123,7 @@ export async function POST(request) {
       lastEarningsReportDate,  // fecha real del reporte (ej. "2026-05-07")
       lastEarningsBeat,
       panelData,
+      analystTargets,
     } = body.data
 
     const ticker = validateTicker(rawTicker)
@@ -301,6 +302,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
       macd, macdSignal,
       nextEarningsDate, nextEarningsDays,
       news: news || [],
+      analystTargets: Array.isArray(analystTargets) ? analystTargets : [],
     }
     const firstResult = await validateNarrative({ narrative: parsed, dataset: validationDataset, ticker })
     if (firstResult.shouldRegenerate) {
@@ -317,6 +319,8 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         }
       } catch (retryErr) {
         console.error(`[narrative] Error en reintento:`, retryErr.message)
+        parsed = firstParsed
+        validationWarning = true
       }
     }
 

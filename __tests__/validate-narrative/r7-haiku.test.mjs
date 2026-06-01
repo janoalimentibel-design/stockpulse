@@ -35,70 +35,100 @@ const SAMPLE_DATASET = {
 // ── Test 1: Haiku returns no issues ──────────────────────────────────────────
 test('r7HaikuSanityCheck — Haiku returns no issues', async () => {
   const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => makeAnthropicResponse('{"hasIssues": false, "issues": []}')
-
+  const originalKey = process.env.ANTHROPIC_API_KEY
   process.env.ANTHROPIC_API_KEY = 'test-key'
-  const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
-
-  globalThis.fetch = originalFetch
-
-  assert.deepEqual(result, { hasIssues: false, issues: [] })
+  globalThis.fetch = async () => makeAnthropicResponse('{"hasIssues": false, "issues": []}')
+  try {
+    const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
+    assert.deepEqual(result, { hasIssues: false, issues: [] })
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalKey
+    }
+  }
 })
 
 // ── Test 2: Haiku detects an issue ───────────────────────────────────────────
 test('r7HaikuSanityCheck — Haiku detects an issue', async () => {
   const originalFetch = globalThis.fetch
+  const originalKey = process.env.ANTHROPIC_API_KEY
+  process.env.ANTHROPIC_API_KEY = 'test-key'
   globalThis.fetch = async () =>
     makeAnthropicResponse(
       '{"hasIssues": true, "issues": ["afirma P/E de 25 pero no está en el dataset"]}'
     )
-
-  process.env.ANTHROPIC_API_KEY = 'test-key'
-  const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
-
-  globalThis.fetch = originalFetch
-
-  assert.deepEqual(result, {
-    hasIssues: true,
-    issues: ['R7: afirma P/E de 25 pero no está en el dataset'],
-  })
+  try {
+    const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
+    assert.deepEqual(result, {
+      hasIssues: true,
+      issues: ['R7: afirma P/E de 25 pero no está en el dataset'],
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalKey
+    }
+  }
 })
 
 // ── Test 3: Network error — non-blocking ─────────────────────────────────────
 test('r7HaikuSanityCheck — network error is non-blocking', async () => {
   const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => { throw new Error('network') }
-
+  const originalKey = process.env.ANTHROPIC_API_KEY
   process.env.ANTHROPIC_API_KEY = 'test-key'
-  const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
-
-  globalThis.fetch = originalFetch
-
-  assert.deepEqual(result, { hasIssues: false, issues: [] })
+  globalThis.fetch = async () => { throw new Error('network') }
+  try {
+    const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
+    assert.deepEqual(result, { hasIssues: false, issues: [] })
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalKey
+    }
+  }
 })
 
 // ── Test 4: Malformed JSON from Haiku ────────────────────────────────────────
 test('r7HaikuSanityCheck — malformed JSON from Haiku is non-blocking', async () => {
   const originalFetch = globalThis.fetch
+  const originalKey = process.env.ANTHROPIC_API_KEY
+  process.env.ANTHROPIC_API_KEY = 'test-key'
   globalThis.fetch = async () =>
     makeAnthropicResponse('Lo siento, no puedo analizar esto')
-
-  process.env.ANTHROPIC_API_KEY = 'test-key'
-  const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
-
-  globalThis.fetch = originalFetch
-
-  assert.deepEqual(result, { hasIssues: false, issues: [] })
+  try {
+    const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
+    assert.deepEqual(result, { hasIssues: false, issues: [] })
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalKey
+    }
+  }
 })
 
 // ── Test 5: API key absent ───────────────────────────────────────────────────
 test('r7HaikuSanityCheck — missing API key is non-blocking', async () => {
-  const savedKey = process.env.ANTHROPIC_API_KEY
+  const originalFetch = globalThis.fetch
+  const originalKey = process.env.ANTHROPIC_API_KEY
   delete process.env.ANTHROPIC_API_KEY
-
-  const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
-
-  process.env.ANTHROPIC_API_KEY = savedKey
-
-  assert.deepEqual(result, { hasIssues: false, issues: [] })
+  try {
+    const result = await r7HaikuSanityCheck(SAMPLE_NARRATIVE, SAMPLE_DATASET)
+    assert.deepEqual(result, { hasIssues: false, issues: [] })
+  } finally {
+    globalThis.fetch = originalFetch
+    if (originalKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalKey
+    }
+  }
 })
