@@ -40,6 +40,7 @@ export default function FeedbackWidget({ ticker }) {
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button
+          type="button"
           onClick={() => handleVote('up')}
           disabled={isLoading}
           style={{
@@ -56,6 +57,7 @@ export default function FeedbackWidget({ ticker }) {
           👍 Útil
         </button>
         <button
+          type="button"
           onClick={() => handleVote('down')}
           disabled={isLoading}
           style={{
