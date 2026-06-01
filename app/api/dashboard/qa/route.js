@@ -8,20 +8,27 @@ export async function GET(request) {
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [feedbackResult, cacheResult] = await Promise.all([
-    supabase
-      .from('narrative_feedback')
-      .select('ticker, rating, created_at')
-      .gte('created_at', thirtyDaysAgo)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    supabase
-      .from('narrative_cache')
-      .select('ticker, data, created_at'),
-  ])
+  let feedbackResult, cacheResult
+  try {
+    ;[feedbackResult, cacheResult] = await Promise.all([
+      supabase
+        .from('narrative_feedback')
+        .select('ticker, rating, created_at')
+        .gte('created_at', thirtyDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('narrative_cache')
+        .select('ticker, data, created_at')
+        .limit(200),
+    ])
+  } catch (err) {
+    console.error('[dashboard/qa] Supabase error:', err.message)
+    return Response.json({ error: 'Error al consultar la base de datos.' }, { status: 500 })
+  }
 
-  const feedbackRows = feedbackResult.data || []
-  const cacheRows    = cacheResult.data  || []
+  const feedbackRows = feedbackResult?.data || []
+  const cacheRows    = cacheResult?.data    || []
 
   // Build a map from ticker -> cache row for fast lookup
   const cacheMap = {}

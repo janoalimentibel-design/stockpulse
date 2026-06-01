@@ -109,9 +109,11 @@ function WarningCard({ item }) {
           ⚠️ warning
         </span>
       </div>
-      <p style={{ fontSize: 12, color: C.text2, lineHeight: 1.6, marginBottom: expanded ? 0 : 6 }}>
-        {expanded ? (item.narrative?.technical_summary || '—') : truncate(item.narrative?.technical_summary, 120)}
-      </p>
+      {!expanded && (
+        <p style={{ fontSize: 12, color: C.text2, lineHeight: 1.6, marginBottom: 6 }}>
+          {truncate(item.narrative?.technical_summary, 120)}
+        </p>
+      )}
       {expanded && <NarrativeBlock narrative={item.narrative} />}
       <button
         onClick={() => setExpanded(e => !e)}
@@ -213,7 +215,7 @@ export default function QAPage() {
   const stats          = data?.stats          || {}
   const recentFeedback = data?.recentFeedback || []
   const warnings       = data?.warnings       || []
-  const isEmpty        = stats.totalFeedback === 0 && stats.warningCount === 0
+  const isEmpty        = (stats.totalFeedback ?? 0) === 0 && (stats.warningCount ?? 0) === 0
 
   const upRateColor = stats.upRate >= 70 ? C.green : stats.upRate < 50 ? C.red : C.amber
   const upRateBg    = stats.upRate >= 70 ? C.greenBg : stats.upRate < 50 ? C.redBg : C.amberBg
