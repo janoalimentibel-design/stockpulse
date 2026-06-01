@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabase'
 import { validateTicker } from '@/lib/validate'
 import { checkRateLimit, getIP } from '@/lib/rate-limit'
+import { validateNarrative } from '@/lib/validate-narrative'
 
 const CACHE_TTL_HOURS = 4
 const EARNINGS_CACHE_BYPASS_DAYS = 7
@@ -94,55 +95,6 @@ function sanitizePromptInput(str, maxLen = 120) {
     .trim()
 }
 
-function validateNarrative(narrative, panelData) {
-  const issues = []
-  const tech = (narrative.technical_summary || '').toLowerCase()
-  const fund = (narrative.fundamental_summary || '').toLowerCase()
-  const analyst = (narrative.analyst_summary || '').toLowerCase()
-  const allText = tech + ' ' + fund + ' ' + analyst
-  const { cruceMA, rsi, position52w, trend } = panelData
-
-  if (cruceMA === 'Death Cross') {
-    const alcistaPhrases = ['alcista de largo plazo', 'tendencia alcista de largo', 'long-term bullish', 'tendencia positiva de largo']
-    if (alcistaPhrases.some(p => allText.includes(p)))
-      issues.push(`Death Cross activo pero la narrativa describe tendencia alcista de largo plazo`)
-  }
-  if (trend === 'Tendencia bajista') {
-    const optimistaPhrases = ['señal de compra', 'excelente momento para comprar', 'fuerte oportunidad de compra']
-    if (optimistaPhrases.some(p => allText.includes(p)))
-      issues.push(`Panel bajista pero narrativa tiene tono de compra`)
-  }
-  if (rsi != null && rsi > 70) {
-    const mentionsRisk = allText.includes('sobrecompra') || allText.includes('corrección') ||
-                         allText.includes('rsi') || allText.includes('sobrecomprado')
-    if (!mentionsRisk) issues.push(`RSI ${rsi} (sobrecompra) no se menciona en la narrativa`)
-  }
-  if (position52w != null && position52w < 25) {
-    const strengthPhrases = ['cerca de máximos', 'fortaleza técnica', 'máximos históricos']
-    if (strengthPhrases.some(p => allText.includes(p)))
-      issues.push(`Precio en ${position52w}% del rango 52W pero narrativa menciona fortaleza o máximos`)
-  }
-  const { macd: macdVal, macdSignal: macdSigVal } = panelData
-  if (macdVal != null && macdSigVal != null) {
-    const bullishMomentumPhrases = ['momentum positivo', 'impulso alcista', 'momentum alcista', 'impulso positivo', 'momentum favorable']
-    const bearishMomentumPhrases = ['presión bajista', 'momentum negativo', 'impulso bajista', 'presión vendedora', 'momentum desfavorable']
-    if (macdVal < macdSigVal && bullishMomentumPhrases.some(p => allText.includes(p)))
-      issues.push(`MACD bajista (${macdVal} < señal ${macdSigVal}) pero narrativa describe momentum positivo`)
-    if (macdVal > macdSigVal && bearishMomentumPhrases.some(p => allText.includes(p)))
-      issues.push(`MACD alcista (${macdVal} > señal ${macdSigVal}) pero narrativa describe presión bajista`)
-  }
-  return issues
-}
-
-function buildPanelContext(panelData) {
-  const { cruceMA, rsi, position52w, trend, signal, score } = panelData
-  const parts = []
-  if (cruceMA) parts.push(`Cruce MA: ${cruceMA}`)
-  if (rsi != null) parts.push(`RSI: ${rsi}${rsi > 70 ? ' (SOBRECOMPRADO)' : rsi < 30 ? ' (SOBREVENDIDO)' : ''}`)
-  if (position52w != null) parts.push(`Posición 52W: ${position52w}%`)
-  if (trend) parts.push(`Veredicto del panel: ${trend} — ${signal} (score ${score}%)`)
-  return parts.join(' · ')
-}
 
 export async function POST(request) {
   try {
@@ -340,33 +292,36 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
 
     let parsed = await callClaude(prompt)
 
-    if (panelData) {
-      const cruceForValidation = ma50 != null && ma200 != null ? (ma50 > ma200 ? 'Golden Cross' : 'Death Cross') : null
-      const validationInput = {
-        cruceMA: cruceForValidation,
-        rsi, position52w: pos52w,
-        trend: panelData.trend, signal: panelData.signal, score: panelData.score,
-        macd, macdSignal,
-      }
-      const issues = validateNarrative(parsed, validationInput)
-      if (issues.length > 0) {
-        console.warn(`[narrative] Validación fallida para ${ticker}:`, issues)
-        const firstResponse = parsed
-        const retryPrompt = `${prompt}\n\n━━━ CORRECCIÓN NECESARIA ━━━\nTu respuesta anterior tenía estas contradicciones:\n${issues.map(i => `• ${i}`).join('\n')}\n\nContexto del panel: ${buildPanelContext(validationInput)}\n\nReescribí la narrativa corrigiendo estas contradicciones.`
-        try {
-          parsed = await callClaude(retryPrompt)
-          const issuesRetry = validateNarrative(parsed, validationInput)
-          if (issuesRetry.length > 0) {
-            console.warn(`[narrative] Segundo intento también falló — usando primera respuesta`)
-            parsed = firstResponse
-          }
-        } catch (retryErr) {
-          console.error(`[narrative] Error en reintento:`, retryErr.message)
+    let validationWarning = false
+
+    const validationDataset = {
+      ticker,
+      price, ma50, ma200, rsi, change1m,
+      panelTrend: panelData?.trend,
+      macd, macdSignal,
+      nextEarningsDate, nextEarningsDays,
+      news: news || [],
+    }
+    const firstResult = await validateNarrative({ narrative: parsed, dataset: validationDataset, ticker })
+    if (firstResult.shouldRegenerate) {
+      console.warn(`[narrative] Validación lib fallida para ${ticker}:`, firstResult.issues)
+      const firstParsed = parsed
+      const retryPrompt = `${prompt}\n\n━━━ CORRECCIÓN NECESARIA ━━━\nProblemas detectados:\n${firstResult.issues.map(i => `• ${i}`).join('\n')}\n\nReescribí la narrativa corrigiendo estos problemas.`
+      try {
+        parsed = await callClaude(retryPrompt)
+        const retryResult = await validateNarrative({ narrative: parsed, dataset: validationDataset, ticker })
+        if (retryResult.shouldRegenerate) {
+          console.warn(`[narrative] Segundo intento también falló — usando primera respuesta con warning`)
+          parsed = firstParsed
+          validationWarning = true
         }
+      } catch (retryErr) {
+        console.error(`[narrative] Error en reintento:`, retryErr.message)
       }
     }
 
     const sanitized = sanitizeNarrative(parsed)
+    if (validationWarning) sanitized._validation_warning = true
     await setCached(cacheKey, sanitized)
     return Response.json(sanitized)
 
