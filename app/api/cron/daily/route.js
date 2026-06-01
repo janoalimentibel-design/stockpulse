@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import tickers from '@/scripts/tickers-priority.json'
 
-export const maxDuration = 800
+export const maxDuration = 300
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
