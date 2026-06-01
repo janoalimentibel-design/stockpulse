@@ -132,6 +132,9 @@ export default function DashboardPage() {
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <span style={{ width:6, height:6, borderRadius:'50%', background:C.green, display:'inline-block' }} />
+            <a href="/dashboard/qa" style={{ padding:'5px 14px', fontSize:11, borderRadius:999, border:`1px solid ${C.border2}`, background:'transparent', color:C.text2, textDecoration:'none' }}>
+              Ver QA
+            </a>
             <button onClick={load} disabled={loading} style={{ padding:'5px 14px', fontSize:11, borderRadius:999, border:`1px solid ${C.accentBd}`, background:C.accentBg, color:C.accent, cursor:'pointer', opacity:loading?0.4:1 }}>
               {loading ? 'Actualizando…' : '↻ Actualizar'}
             </button>
