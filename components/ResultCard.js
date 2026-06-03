@@ -1,6 +1,7 @@
 'use client'
 import PriceChart from './PriceChart'
 import FeedbackWidget from './FeedbackWidget'
+import Disclaimer from './Disclaimer'
 
 const sentimentColors = {
   bull: { bg: 'var(--green-bg)', border: 'var(--green-border)', text: 'var(--green)' },
@@ -541,9 +542,7 @@ export default function ResultCard({
         )}
       </div>
 
-      <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 16 }}>
-        ⚠️ Análisis informativo. No constituye asesoramiento financiero. Datos con delay de ~15 min.
-      </p>
+      <Disclaimer variant="full" style={{ marginTop: 16 }} />
     </div>
   )
 }
