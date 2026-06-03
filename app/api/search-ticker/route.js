@@ -15,8 +15,10 @@ export async function POST(request) {
 
     const fetchTickers = async (url) => {
       const r = await fetch(url)
+      if (r.status === 429) return { results: [], rateLimited: true }
       const data = await r.json()
-      if (data.status === 'ERROR' || r.status === 429) return { results: [], rateLimited: true }
+      // Only treat 429 as rateLimited, not generic Polygon errors
+      if (!r.ok) return { results: [] }
       return data
     }
 
