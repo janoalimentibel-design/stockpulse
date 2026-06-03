@@ -321,7 +321,7 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 1200,
           messages: [{ role: 'user', content: promptText }],
         }),
