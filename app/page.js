@@ -8,6 +8,7 @@ import ResultCard from '../components/ResultCard'
 import ManualForm from '../components/ManualForm'
 import MoversSection from '../components/MoversSection'
 import SkeletonCard from '../components/SkeletonCard'
+import Disclaimer from '../components/Disclaimer'
 import BacktestSection from '../components/BacktestSection'
 
 function friendlyError(raw) {
@@ -148,9 +149,7 @@ export default function Home() {
         </div>
         <SearchBox ticker={ticker} setTicker={setTicker} onSearch={runAnalysis} loading={loading} />
         {!hasResults && !loading && (
-          <p className="text-[11px] mt-3" style={{ color: 'var(--text3)' }}>
-            ⚠️ Herramienta informativa — no constituye asesoramiento financiero ni recomendación de inversión.
-          </p>
+          <Disclaimer variant="compact" style={{ marginTop: 12 }} />
         )}
         {loading && <SkeletonCard message={loadingMsg} />}
         {error && (
