@@ -146,8 +146,8 @@ export default function Navbar() {
 
           <Link href="/" className="flex items-center gap-2 shrink-0">
             <div className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
-              style={{ background: 'var(--accent)', color: '#fff' }}>S</div>
-            <span className="font-bold text-sm tracking-tight" style={{ fontFamily: 'Syne, sans-serif' }}>StockPulse</span>
+              style={{ background: 'var(--accent)', color: '#fff' }}>T</div>
+            <span className="font-bold text-sm tracking-tight" style={{ fontFamily: 'Syne, sans-serif' }}>Tu Asesor Financiero</span>
           </Link>
 
           <div className="flex items-center gap-1">

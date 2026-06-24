@@ -124,9 +124,9 @@ export default function DashboardPage() {
         {/* Header */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:8 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ width:28, height:28, background:C.accent, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff' }}>S</div>
+            <div style={{ width:28, height:28, background:C.accent, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#fff' }}>T</div>
             <div>
-              <p style={{ fontSize:14, fontWeight:500 }}>StockPulse Analytics</p>
+              <p style={{ fontSize:14, fontWeight:500 }}>Tu Asesor Financiero Analytics</p>
               <p style={{ fontSize:11, color:C.text3 }}>Actualizado {genTime} · refresh en {REFRESH-secs}s</p>
             </div>
           </div>
@@ -397,7 +397,7 @@ export default function DashboardPage() {
             <InsightBox
               icon="📣" title="Estrategia de contenido con co-ocurrencia"
               color={C.purple} bg={C.purpleBg} border={C.purpleBd}
-              body="Los pares más frecuentes son tus mejores ideas de posts comparativos: 'MELI vs TSLA: cuál conviene ahora'. Ese formato genera engagement porque tus usuarios ya están comparando esas dos en StockPulse."
+              body="Los pares más frecuentes son tus mejores ideas de posts comparativos: 'MELI vs TSLA: cuál conviene ahora'. Ese formato genera engagement porque tus usuarios ya están comparando esas dos en Tu Asesor Financiero."
             />
           </div>
         </>}
