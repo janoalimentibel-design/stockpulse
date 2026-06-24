@@ -25,7 +25,7 @@ export default function KeysBanner() {
         style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber-border)' }}>
         <div>
           <p className="text-sm font-medium" style={{ color: 'var(--amber)' }}>
-            {!hasPolygon && !hasClaude ? 'Configurá tus API keys para usar StockPulse'
+            {!hasPolygon && !hasClaude ? 'Configurá tus API keys para usar Tu Asesor Financiero'
               : !hasPolygon ? 'Falta la Polygon API key'
               : 'Falta la Claude API key para narrativa con IA'}
           </p>

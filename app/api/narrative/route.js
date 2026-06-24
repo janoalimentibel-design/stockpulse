@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase'
 import { validateTicker } from '@/lib/validate'
 import { checkRateLimit, getIP } from '@/lib/rate-limit'
 
+export const maxDuration = 45
+
 const CACHE_TTL_HOURS = 4
 const EARNINGS_CACHE_BYPASS_DAYS = 7
 
@@ -321,15 +323,16 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 1200,
           messages: [{ role: 'user', content: promptText }],
         }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        console.error('[narrative] Error Anthropic:', err.error?.message || `HTTP ${res.status}`)
-        throw new Error('Error al generar análisis narrativo.')
+        const detail = err.error?.message || `HTTP ${res.status}`
+        console.error('[narrative] Error Anthropic:', detail)
+        throw new Error(`Anthropic: ${detail}`)
       }
       const anthropicData = await res.json()
       const raw = anthropicData.content?.find(b => b.type === 'text')?.text || ''
@@ -372,6 +375,6 @@ Respondé ÚNICAMENTE con este JSON válido, sin markdown, sin texto antes ni de
 
   } catch (err) {
     console.error('[narrative]', err?.message)
-    return Response.json({ error: 'Error al generar el análisis. Intentá de nuevo.' }, { status: 500 })
+    return Response.json({ error: err?.message || 'Error al generar el análisis. Intentá de nuevo.' }, { status: 500 })
   }
 }

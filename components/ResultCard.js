@@ -2,6 +2,7 @@
 import PriceChart from './PriceChart'
 import FeedbackWidget from './FeedbackWidget'
 import Disclaimer from './Disclaimer'
+import EventsSection from './EventsSection'
 
 const sentimentColors = {
   bull: { bg: 'var(--green-bg)', border: 'var(--green-border)', text: 'var(--green)' },
@@ -219,6 +220,7 @@ const MOBILE_TABS = [
   { id: 'tecnico',   label: 'Técnico'   },
   { id: 'narrativa', label: 'IA'        },
   { id: 'noticias',  label: 'Noticias'  },
+  { id: 'eventos',   label: '🔍 Eventos' },
 ]
 
 export default function ResultCard({
@@ -461,6 +463,8 @@ export default function ResultCard({
               </div>
             </div>
           )}
+
+          {hasClaude && <EventsSection ticker={ticker} />}
         </div>
       </div>
 
@@ -540,6 +544,7 @@ export default function ResultCard({
             }
           </div>
         )}
+        {activeTab === 'eventos' && hasClaude && <EventsSection ticker={ticker} />}
       </div>
 
       <Disclaimer variant="full" style={{ marginTop: 16 }} />

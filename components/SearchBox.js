@@ -21,7 +21,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
   }, [])
 
   useEffect(() => {
-    if (!query || query.length < 2) { setSuggestions([]); setShowSuggestions(false); setSearchError(''); return }
+    if (!query || query.length < 3) { setSuggestions([]); setShowSuggestions(false); setSearchError(''); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       if (abortRef.current) abortRef.current.abort()
@@ -48,7 +48,7 @@ export default function SearchBox({ ticker, setTicker, onSearch, loading }) {
         if (e.name !== 'AbortError') setSuggestions([])
       }
       finally { setSearching(false) }
-    }, 400)
+    }, 700)
   }, [query])
 
   function selectSuggestion(item) {

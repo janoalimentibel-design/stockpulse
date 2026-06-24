@@ -198,9 +198,9 @@ async function alertYahooDown(ticker, errorMsg) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resendKey}` },
       body: JSON.stringify({
-        from: 'alerts@stockpulse.app',
+        from: 'alerts@tuasesorfinanciero.com',
         to: alertEmail,
-        subject: `[StockPulse] Yahoo Finance no responde — ${ticker}`,
+        subject: `[Tu Asesor Financiero] Yahoo Finance no responde — ${ticker}`,
         html: `<p><strong>Yahoo Finance no respondió</strong> para <code>${ticker}</code>.</p><p><strong>Error:</strong> ${errorMsg}</p><p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>`,
       }),
     })
