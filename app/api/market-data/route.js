@@ -1,6 +1,7 @@
 // app/api/market-data/route.js
 import { validateTicker } from '@/lib/validate'
 import { checkRateLimit, getIP } from '@/lib/rate-limit'
+import { isInternational, getCurrency, getFxTicker } from '@/lib/market'
 
 function calcMA(closes, period) {
   if (!closes || closes.length < period) return null
@@ -212,6 +213,86 @@ async function alertYahooDown(ticker, errorMsg) {
 let lastYahooAlertAt = 0
 const YAHOO_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 
+async function fetchInternationalData(ticker) {
+  const currency = getCurrency(ticker)
+  const fxSym = getFxTicker(currency)
+  const YH = { 'User-Agent': 'Mozilla/5.0' }
+
+  const [chartRes, summaryRes, fxRes] = await Promise.all([
+    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1y`, { headers: YH }),
+    fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=financialData,defaultKeyStatistics,assetProfile`, { headers: YH }),
+    fxSym
+      ? fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(fxSym)}?interval=1d&range=1d`, { headers: YH })
+      : Promise.resolve(null),
+  ])
+
+  let price = null, priceChangeToday = null, open = null, high = null, low = null
+  let companyName = ticker, sector = null, exchange = null
+  let ma50 = null, ma200 = null, rsi = null, macd = null, macdSignal = null
+  let relVol = null, change1m = null, high52 = null, low52 = null
+
+  if (chartRes.ok) {
+    const chart = await chartRes.json()
+    const result = chart?.chart?.result?.[0]
+    const meta = result?.meta
+    if (meta) {
+      price            = meta.regularMarketPrice ?? null
+      priceChangeToday = meta.regularMarketPrice && meta.previousClose
+        ? parseFloat(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose * 100).toFixed(2))
+        : null
+      open     = meta.regularMarketOpen ?? null
+      high     = meta.regularMarketDayHigh ?? null
+      low      = meta.regularMarketDayLow ?? null
+      companyName = meta.longName || meta.shortName || ticker
+      exchange = meta.fullExchangeName || meta.exchangeName || null
+    }
+    const quotes  = result?.indicators?.quote?.[0] || {}
+    const closes  = (quotes.close  || []).filter(v => v != null)
+    const highs   = (quotes.high   || []).filter(v => v != null)
+    const lows    = (quotes.low    || []).filter(v => v != null)
+    const volumes = (quotes.volume || []).filter(v => v != null)
+    if (closes.length >= 20) {
+      ma50       = calcMA(closes, 50)
+      ma200      = calcMA(closes, 200)
+      rsi        = calcRSI(closes, 14)
+      const m    = calcMACD(closes)
+      macd       = m.macd
+      macdSignal = m.macdSignal
+      relVol     = calcRelVol(volumes)
+      change1m   = calcChange1M(closes)
+      high52     = Math.round(Math.max(...highs) * 100) / 100
+      low52      = Math.round(Math.min(...lows) * 100) / 100
+    }
+  }
+
+  let fundamentals = null
+  if (summaryRes.ok) {
+    const summary = await summaryRes.json()
+    const r       = summary?.quoteSummary?.result?.[0]
+    const fin     = r?.financialData
+    const stats   = r?.defaultKeyStatistics
+    const profile = r?.assetProfile
+    if (profile?.sector) sector = profile.sector
+    if (fin || stats) {
+      fundamentals = {
+        pe:        stats?.trailingPE?.raw ?? null,
+        netMargin: fin?.profitMargins?.raw   != null ? Math.round(fin.profitMargins.raw   * 1000) / 10 : null,
+        roe:       fin?.returnOnEquity?.raw  != null ? Math.round(fin.returnOnEquity.raw  * 1000) / 10 : null,
+        de:        fin?.debtToEquity?.raw    != null ? Math.round(fin.debtToEquity.raw    * 100)  / 100 : null,
+        epsGrowth: fin?.earningsGrowth?.raw  != null ? Math.round(fin.earningsGrowth.raw  * 1000) / 10 : null,
+      }
+    }
+  }
+
+  let fxRate = null
+  if (fxRes?.ok) {
+    const fxData = await fxRes.json()
+    fxRate = fxData?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null
+  }
+
+  return { companyName, sector, exchange, currency, fxRate, price, priceChangeToday, open, high, low, ma50, ma200, rsi, macd, macdSignal, relVol, change1m, high52, low52, fundamentals }
+}
+
 export async function POST(request) {
   try {
     const ip = getIP(request)
@@ -230,6 +311,36 @@ export async function POST(request) {
     const polygonKey = process.env.POLYGON_API_KEY
     const finnhubKey = process.env.FINNHUB_API_KEY
     if (!polygonKey) return Response.json({ error: 'Configuración del servidor incompleta.' }, { status: 500 })
+
+    // International stocks: Yahoo Finance path
+    if (isInternational(t)) {
+      const intlData = await fetchInternationalData(t)
+
+      const { nextEarningsDate, lastEarningsDate, lastEarningsReportDate, lastEarningsBeat } = await fetchEarnings(t, finnhubKey)
+      const nextEarningsDays = calcEarningsDays(nextEarningsDate)
+
+      let news = []
+      try {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const newsRes = await fetch(
+          `https://api.polygon.io/v2/reference/news?ticker=${encodeURIComponent(t)}&limit=5&order=desc&sort=published_utc&published_utc.gte=${thirtyDaysAgo}&apiKey=${polygonKey}`
+        )
+        const newsData = await newsRes.json()
+        news = (newsData.results || []).slice(0, 5).map(n => ({
+          title: n.title, published: n.published_utc,
+          url: n.article_url, publisher: n.publisher?.name,
+        }))
+      } catch {}
+
+      return Response.json({
+        ticker: t,
+        ...intlData,
+        news,
+        nextEarningsDate, nextEarningsDays,
+        lastEarningsDate, lastEarningsReportDate, lastEarningsBeat,
+        fetchedAt: new Date().toISOString(),
+      })
+    }
 
     // 1 — Datos de la empresa
     let companyName = t, sector = null
