@@ -223,6 +223,8 @@ const MOBILE_TABS = [
   { id: 'eventos',   label: '🔍 Eventos' },
 ]
 
+const CURRENCY_SYMBOLS = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', SEK: 'kr', DKK: 'kr', NOK: 'kr', CHF: 'Fr' }
+
 export default function ResultCard({
   ticker, companyName, marketData, analysis,
   narrative, activeTab, setActiveTab, hasClaude,
@@ -231,6 +233,11 @@ export default function ResultCard({
   const colors   = sentimentColors[sentiment] || sentimentColors.neut
   const techInds = indicators.filter(i => i.isTech)
   const fundInds = indicators.filter(i => !i.isTech)
+
+  const currency = marketData?.currency || 'USD'
+  const fxRate   = marketData?.fxRate   || null
+  const sym      = CURRENCY_SYMBOLS[currency] || '$'
+  const isIntl   = currency !== 'USD'
 
   const NarrativaContent = () => (
     narrative && !narrative._error ? (
@@ -337,15 +344,31 @@ export default function ResultCard({
               <span style={{ fontSize: 13, color: 'var(--text3)' }}>{companyName}</span>
             )}
           </div>
-          {marketData?.sector && (
-            <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {marketData.sector}
-            </p>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+            {marketData?.sector && (
+              <p style={{ fontSize: 11, color: 'var(--text3)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {marketData.sector}
+              </p>
+            )}
+            {marketData?.exchange && (
+              <span style={{
+                fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 999,
+                background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text3)',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                {marketData.exchange}
+              </span>
+            )}
+          </div>
         </div>
         {marketData?.price && (
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'DM Mono' }}>${marketData.price}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'DM Mono' }}>{sym}{marketData.price}</div>
+            {isIntl && fxRate && (
+              <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'DM Mono' }}>
+                ≈ ${(marketData.price * fxRate).toFixed(2)} USD
+              </div>
+            )}
             {marketData.priceChangeToday != null && (
               <div style={{ fontSize: 13, color: marketData.priceChangeToday >= 0 ? 'var(--green)' : 'var(--red)' }}>
                 {marketData.priceChangeToday >= 0 ? '+' : ''}{marketData.priceChangeToday}% hoy
@@ -403,10 +426,10 @@ export default function ResultCard({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                 {[
                   { label: 'RSI',       val: marketData.rsi     ? Number(marketData.rsi).toFixed(0) : 'N/D' },
-                  { label: 'MA50',      val: marketData.ma50    ? '$' + marketData.ma50              : 'N/D' },
-                  { label: 'MA200',     val: marketData.ma200   ? '$' + marketData.ma200             : 'N/D' },
-                  { label: 'Máx 52W',  val: marketData.high52  ? '$' + marketData.high52            : 'N/D' },
-                  { label: 'Mín 52W',  val: marketData.low52   ? '$' + marketData.low52             : 'N/D' },
+                  { label: 'MA50',      val: marketData.ma50    ? sym + marketData.ma50              : 'N/D' },
+                  { label: 'MA200',     val: marketData.ma200   ? sym + marketData.ma200             : 'N/D' },
+                  { label: 'Máx 52W',  val: marketData.high52  ? sym + marketData.high52            : 'N/D' },
+                  { label: 'Mín 52W',  val: marketData.low52   ? sym + marketData.low52             : 'N/D' },
                   { label: 'Cambio 1M', val: marketData.change1m != null ? (marketData.change1m > 0 ? '+' : '') + marketData.change1m + '%' : 'N/D' },
                 ].map((m, i) => (
                   <div key={i} style={{ background: 'var(--bg3)', borderRadius: 6, padding: '7px 8px' }}>

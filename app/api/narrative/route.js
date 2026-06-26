@@ -173,6 +173,7 @@ export async function POST(request) {
       lastEarningsReportDate,  // fecha real del reporte (ej. "2026-05-07")
       lastEarningsBeat,
       panelData,
+      currency,
     } = body.data
 
     const ticker = validateTicker(rawTicker)
@@ -216,8 +217,12 @@ export async function POST(request) {
         }).join('\n')
       : null
 
-    const ma50str  = ma50  != null ? `$${ma50}`  : 'N/D'
-    const ma200str = ma200 != null ? `$${ma200}` : 'N/D'
+    const CURRENCY_SYMBOLS = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', SEK: 'kr', DKK: 'kr', NOK: 'kr', CHF: 'Fr' }
+    const sym = CURRENCY_SYMBOLS[currency] || '$'
+    const currencyLabel = currency && currency !== 'USD' ? ` · Moneda: ${currency}` : ''
+
+    const ma50str  = ma50  != null ? `${sym}${ma50}`  : 'N/D'
+    const ma200str = ma200 != null ? `${sym}${ma200}` : 'N/D'
     const cruceMA  = (ma50 != null && ma200 != null) ? (ma50 > ma200 ? 'Golden Cross (MA50 > MA200)' : 'Death Cross (MA50 < MA200)') : 'N/D'
     const rsiStr   = rsi   != null ? `${rsi}` : 'N/D'
     const macdStr  = macd  != null && macdSignal != null ? `${macd} vs señal ${macdSignal}` : 'N/D'
@@ -267,13 +272,13 @@ export async function POST(request) {
     const prompt = `Hoy es ${today}. Sos un analista financiero experto escribiendo para el inversor hispanoparlante no profesional.
 
 ━━━ DATOS DE MERCADO (calculados por backend — NO inventar otros números) ━━━
-Ticker: ${ticker} — ${companyName}${sector ? ` · ${sector}` : ''}
-Precio: $${price ?? 'N/D'} (${priceChangeToday != null ? (priceChangeToday >= 0 ? '+' : '') + priceChangeToday + '% hoy' : 'variación N/D'})
-Rango día: $${low ?? 'N/D'} – $${high ?? 'N/D'}
+Ticker: ${ticker} — ${companyName}${sector ? ` · ${sector}` : ''}${currencyLabel}
+Precio: ${sym}${price ?? 'N/D'} (${priceChangeToday != null ? (priceChangeToday >= 0 ? '+' : '') + priceChangeToday + '% hoy' : 'variación N/D'})
+Rango día: ${sym}${low ?? 'N/D'} – ${sym}${high ?? 'N/D'}
 MA50: ${ma50str} · MA200: ${ma200str} · Cruce: ${cruceMA}
 RSI(14): ${rsiStr} · MACD: ${macdStr}
 Volumen relativo: ${volStr}
-Rango 52 semanas: $${low52 ?? 'N/D'} – $${high52 ?? 'N/D'} · Posición actual: ${pos52wStr} del rango
+Rango 52 semanas: ${sym}${low52 ?? 'N/D'} – ${sym}${high52 ?? 'N/D'} · Posición actual: ${pos52wStr} del rango
 Momentum 1 mes: ${change1mStr}
 
 ━━━ FUNDAMENTALES (desde Polygon — NO inventar ni completar) ━━━

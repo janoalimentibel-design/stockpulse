@@ -15,14 +15,14 @@ function friendlyError(raw) {
   if (!raw) return 'Ocurrió un error inesperado. Intentá de nuevo.'
   const msg = raw.toLowerCase()
   if (msg.includes('ticker') || msg.includes('not found') || msg.includes('no results'))
-    return 'No encontramos datos para ese ticker. Verificá que sea un símbolo válido del NYSE o NASDAQ: AAPL, NVDA, MELI, GOOGL.'
+    return 'No encontramos datos para ese ticker. Probá con AAPL, NVDA, MELI (EE.UU.) o ASML.AS, SAP.DE, VOW3.DE (Europa) o 7203.T (Japón).'
   if (msg.includes('rate limit') || msg.includes('too many'))
     return 'Demasiadas consultas seguidas. Esperá unos segundos e intentá de nuevo.'
   if (msg.includes('network') || msg.includes('fetch'))
     return 'Error de conexión. Verificá tu internet e intentá de nuevo.'
   if (msg.includes('claude') || msg.includes('anthropic'))
     return 'Error al generar el análisis con IA. Los datos técnicos están disponibles igual.'
-  return 'No pudimos obtener datos para este ticker. Probá con: AAPL, NVDA, MELI, GOOGL, AMZN.'
+  return 'No pudimos obtener datos. Probá con AAPL, NVDA, MELI (EE.UU.) · ASML.AS, SAP.DE (Europa) · 7203.T (Japón).'
 }
 
 export default function Home() {
@@ -189,7 +189,7 @@ export default function Home() {
           <div>
             <div className="text-center py-10" style={{ color: 'var(--text3)' }}>
               <p className="text-5xl mb-5">📈</p>
-              <p className="text-xs">Ej: AAPL · NVDA · MELI · GOOGL · MSFT · AMZN · KO · TSLA</p>
+              <p className="text-xs">EE.UU.: AAPL · NVDA · MELI · GOOGL · AMZN · Europa: ASML.AS · SAP.DE · VOW3.DE · Japón: 7203.T</p>
             </div>
             <MoversSection onSelect={handleMoverSelect} />
           </div>
